@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Trimmer &amp; Split</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+
+  .header { padding: 16px 24px; background: #16213e; border-bottom: 1px solid #0f3460; display: flex; align-items: center; gap: 12px; }
+  .header h1 { font-size: 20px; font-weight: 600; color: #e94560; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed #0f3460; border-radius: 12px; padding: 80px 40px;
+    text-align: center; cursor: pointer; transition: all 0.2s;
+    background: #16213e; margin-bottom: 24px;
+  }
+  .dropzone:hover, .dropzone.dragover { border-color: #e94560; background: #1a1a3e; }
+  .dropzone h2 { font-size: 18px; margin-bottom: 8px; }
+  .dropzone p { color: #888; font-size: 14px; }
+  .dropzone input { display: none; }
+
+  /* Editor layout */
+  .editor { display: none; gap: 24px; }
+  .editor.active { display: grid; grid-template-columns: 1fr 360px; }
+
+  /* Left panel */
+  .left-panel { display: flex; flex-direction: column; gap: 20px; }
+
+  /* Video player */
+  .video-wrap { position: relative; background: #000; border-radius: 8px; overflow: hidden; }
+  .video-wrap video { width: 100%; display: block; }
+
+  /* Timeline / trim */
+  .timeline-section { background: #16213e; border-radius: 8px; padding: 16px; }
+  .timeline-section h3 { font-size: 14px; margin-bottom: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+  .timeline-bar { position: relative; height: 48px; background: #0a0a1a; border-radius: 6px; margin-bottom: 12px; cursor: pointer; }
+  .timeline-range { position: absolute; top: 0; height: 100%; background: rgba(233,69,96,0.3); border-radius: 6px; }
+  .timeline-handle {
+    position: absolute; top: -4px; width: 14px; height: 56px; background: #e94560;
+    border-radius: 3px; cursor: ew-resize; z-index: 2;
+  }
+  .timeline-handle.start { left: 0; }
+  .timeline-handle.end { right: 0; }
+  .timeline-playhead { position: absolute; top: 0; width: 2px; height: 100%; background: #fff; z-index: 3; pointer-events: none; }
+  .trim-times { display: flex; justify-content: space-between; font-size: 13px; color: #aaa; }
+
+  /* Crop selection area */
+  .crop-section { background: #16213e; border-radius: 8px; padding: 16px; }
+  .crop-section h3 { font-size: 14px; margin-bottom: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+  .crop-canvas-wrap { position: relative; display: inline-block; background: #000; border-radius: 6px; overflow: hidden; }
+  .crop-canvas-wrap canvas { display: block; width: 100%; }
+  .crop-box {
+    position: absolute; border: 2px solid; cursor: move; display: flex;
+    align-items: center; justify-content: center; font-size: 12px; font-weight: 600;
+    user-select: none; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+  .crop-box.top-crop { border-color: #4ecdc4; background: rgba(78,205,196,0.15); }
+  .crop-box.bottom-crop { border-color: #ffe66d; background: rgba(255,230,109,0.15); }
+  .crop-box .resize-handle {
+    position: absolute; width: 12px; height: 12px; background: #fff; border-radius: 2px;
+  }
+  .crop-box .resize-handle.nw { top: -6px; left: -6px; cursor: nw-resize; }
+  .crop-box .resize-handle.ne { top: -6px; right: -6px; cursor: ne-resize; }
+  .crop-box .resize-handle.sw { bottom: -6px; left: -6px; cursor: sw-resize; }
+  .crop-box .resize-handle.se { bottom: -6px; right: -6px; cursor: se-resize; }
+
+  /* Right panel - preview */
+  .right-panel { display: flex; flex-direction: column; gap: 16px; }
+  .preview-section { background: #16213e; border-radius: 8px; padding: 16px; flex: 1; display: flex; flex-direction: column; }
+  .preview-section h3 { font-size: 14px; margin-bottom: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+  .preview-phone {
+    position: relative; width: 270px; height: 480px; margin: 0 auto;
+    background: #000; border-radius: 8px; overflow: hidden; border: 2px solid #333;
+  }
+  .preview-phone .preview-top, .preview-phone .preview-bottom { position: absolute; left: 0; width: 100%; overflow: hidden; }
+  .preview-phone .preview-top canvas, .preview-phone .preview-bottom canvas { display: block; }
+  .preview-split-handle {
+    position: absolute; left: 0; width: 100%; height: 6px; background: #e94560;
+    cursor: ns-resize; z-index: 10; transform: translateY(-50%);
+  }
+
+  /* Controls */
+  .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer;
+    font-size: 14px; font-weight: 600; transition: all 0.15s;
+  }
+  .btn-primary { background: #e94560; color: #fff; }
+  .btn-primary:hover { background: #d63851; }
+  .btn-primary:disabled { background: #555; cursor: not-allowed; }
+  .btn-secondary { background: #0f3460; color: #e0e0e0; }
+  .btn-secondary:hover { background: #1a4a80; }
+  .split-info { font-size: 13px; color: #888; }
+
+  /* Render status */
+  .render-status { padding: 12px 16px; border-radius: 6px; font-size: 14px; display: none; }
+  .render-status.rendering { display: block; background: #0f3460; color: #4ecdc4; }
+  .render-status.done { display: block; background: #1a4a2e; color: #4ecdc4; }
+  .render-status.error { display: block; background: #4a1a1a; color: #e94560; }
+  .render-status a { color: #4ecdc4; font-weight: 600; }
+
+  .playback-controls { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .playback-controls button { background: #0f3460; color: #fff; border: none; border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  .playback-controls button:hover { background: #1a4a80; }
+  .playback-controls span { font-size: 13px; color: #aaa; }
+
+  /* Platform selector */
+  .platform-section { background: #16213e; border-radius: 8px; padding: 16px; }
+  .platform-section h3 { font-size: 14px; margin-bottom: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+  .platform-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+  .platform-btn {
+    padding: 10px 16px; border: 2px solid #0f3460; border-radius: 8px; background: #0a0a1a;
+    color: #ccc; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.15s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .platform-btn:hover { border-color: #e94560; color: #fff; }
+  .platform-btn.active { border-color: #e94560; background: rgba(233,69,96,0.15); color: #fff; }
+  .platform-btn .plat-icon { font-size: 18px; }
+  .platform-details { margin-top: 10px; font-size: 12px; color: #777; line-height: 1.6; }
+  .platform-details span { color: #aaa; }
+
+  /* Quality toggle */
+  .quality-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; margin-bottom: 4px; }
+  .quality-row label { font-size: 13px; color: #aaa; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .quality-toggle { display: flex; border: 2px solid #0f3460; border-radius: 6px; overflow: hidden; }
+  .quality-toggle button {
+    padding: 6px 18px; border: none; background: #0a0a1a; color: #888;
+    cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.15s;
+  }
+  .quality-toggle button:first-child { border-right: 1px solid #0f3460; }
+  .quality-toggle button:hover { color: #fff; }
+  .quality-toggle button.active { background: #e94560; color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Video Trimmer &amp; Split</h1>
+</div>
+
+<div class="container">
+  <!-- Drop zone -->
+  <div class="dropzone" id="dropzone">
+    <h2>Drop a video file here</h2>
+    <p>Supports MP4, MKV, MOV, AVI, WEBM</p>
+    <input type="file" id="fileInput" accept="video/*,.mkv">
+  </div>
+
+  <!-- Editor -->
+  <div class="editor" id="editor">
+    <div class="left-panel">
+      <!-- Video player -->
+      <div class="video-wrap">
+        <video id="video" muted></video>
+      </div>
+      <div class="playback-controls">
+        <button id="playBtn">Play</button>
+        <span id="currentTime">0:00</span> / <span id="totalTime">0:00</span>
+      </div>
+
+      <!-- Timeline -->
+      <div class="timeline-section">
+        <h3>Trim</h3>
+        <div class="timeline-bar" id="timelineBar">
+          <div class="timeline-range" id="timelineRange"></div>
+          <div class="timeline-handle start" id="trimStart"></div>
+          <div class="timeline-handle end" id="trimEnd"></div>
+          <div class="timeline-playhead" id="playhead"></div>
+        </div>
+        <div class="trim-times">
+          <span id="trimStartTime">0:00.0</span>
+          <span id="trimDuration">Duration: 0:00</span>
+          <span id="trimEndTime">0:00.0</span>
+        </div>
+      </div>
+
+      <!-- Crop area selection -->
+      <div class="crop-section">
+        <h3>Select crop areas (drag &amp; resize the boxes)</h3>
+        <div class="crop-canvas-wrap" id="cropCanvasWrap">
+          <canvas id="cropCanvas"></canvas>
+          <div class="crop-box top-crop" id="topCrop">
+            TOP
+            <div class="resize-handle nw"></div>
+            <div class="resize-handle ne"></div>
+            <div class="resize-handle sw"></div>
+            <div class="resize-handle se"></div>
+          </div>
+          <div class="crop-box bottom-crop" id="bottomCrop">
+            BOTTOM
+            <div class="resize-handle nw"></div>
+            <div class="resize-handle ne"></div>
+            <div class="resize-handle sw"></div>
+            <div class="resize-handle se"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Platform -->
+      <div class="platform-section">
+        <h3>Platform</h3>
+        <div class="platform-grid" id="platformGrid">
+          <button class="platform-btn" data-platform="instagram">
+            <span class="plat-icon">&#x1F4F7;</span> Instagram
+          </button>
+          <button class="platform-btn" data-platform="tiktok">
+            <span class="plat-icon">&#x1F3B5;</span> TikTok
+          </button>
+          <button class="platform-btn" data-platform="twitter">
+            <span class="plat-icon">&#x1D54F;</span> Twitter / X
+          </button>
+          <button class="platform-btn" data-platform="whatsapp">
+            <span class="plat-icon">&#x1F4AC;</span> WhatsApp
+          </button>
+          <button class="platform-btn" data-platform="telegram">
+            <span class="plat-icon">&#x2708;</span> Telegram
+          </button>
+        </div>
+        <div class="quality-row">
+          <label>Quality</label>
+          <div class="quality-toggle" id="qualityToggle">
+            <button data-quality="optimized">Optimized</button>
+            <button data-quality="max" class="active">Max</button>
+          </div>
+        </div>
+        <div class="platform-details" id="platformDetails"></div>
+      </div>
+
+      <!-- Render -->
+      <div class="controls">
+        <button class="btn btn-primary" id="renderBtn">Render Video</button>
+        <button class="btn btn-secondary" id="resetBtn">Load New Video</button>
+      </div>
+      <div class="render-status" id="renderStatus"></div>
+    </div>
+
+    <!-- Right panel - Preview -->
+    <div class="right-panel">
+      <div class="preview-section">
+        <h3>Preview (9:16)</h3>
+        <div class="preview-phone" id="previewPhone">
+          <div class="preview-top" id="previewTop">
+            <canvas id="previewTopCanvas"></canvas>
+          </div>
+          <div class="preview-split-handle" id="splitHandle"></div>
+          <div class="preview-bottom" id="previewBottom">
+            <canvas id="previewBottomCanvas"></canvas>
+          </div>
+        </div>
+        <div class="split-info" id="splitInfo" style="text-align:center; margin-top:12px;">
+          Split: 50% / 50% — Drag the red bar to adjust
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+// State
+let videoInfo = null;
+let splitRatio = 0.5;
+let trimRange = [0, 1];
+let animFrameId = null;
+let selectedPlatform = 'instagram';
+let selectedQuality = 'max';
+
+// Crop state (in display-pixel coords relative to cropCanvasWrap)
+let crops = {
+  top:    { x: 0, y: 0, w: 100, h: 80 },
+  bottom: { x: 0, y: 80, w: 100, h: 80 },
+};
+
+const PLATFORM_INFO = {
+  instagram: {
+    max: {
+      res: '1080x1920', codec: 'H.264 High 4.0', bitrate: 'CRF 16, max 25 Mbps',
+      maxFps: 60, audio: 'AAC 192k', maxSize: '300 MB', note: 'Maximum quality, slow encode'
+    },
+    optimized: {
+      res: '1080x1920', codec: 'H.264 High 4.0', bitrate: 'CRF 23, max 8 Mbps',
+      maxFps: 60, audio: 'AAC 128k', maxSize: '300 MB', note: 'Fast upload, great visual quality'
+    },
+  },
+  tiktok: {
+    max: {
+      res: '1080x1920', codec: 'H.264 High 4.2', bitrate: 'CRF 16, max 20 Mbps',
+      maxFps: 60, audio: 'AAC 192k', maxSize: '4 GB', note: 'Maximum headroom for TikTok re-encoding'
+    },
+    optimized: {
+      res: '1080x1920', codec: 'H.264 High 4.2', bitrate: 'CRF 23, max 8 Mbps',
+      maxFps: 60, audio: 'AAC 128k', maxSize: '4 GB', note: 'Fast upload, good quality after re-encoding'
+    },
+  },
+  twitter: {
+    max: {
+      res: '1080x1920', codec: 'H.264 High 4.2', bitrate: 'CRF 18, max 15 Mbps',
+      maxFps: 60, audio: 'AAC 192k', maxSize: '512 MB', note: 'Highest quality X accepts'
+    },
+    optimized: {
+      res: '1080x1920', codec: 'H.264 High 4.2', bitrate: 'CRF 23, max 5 Mbps',
+      maxFps: 60, audio: 'AAC 128k', maxSize: '512 MB', note: 'Recommended per X dev docs'
+    },
+  },
+  whatsapp: {
+    max: {
+      res: '720x1280', codec: 'H.264 Main 3.1', bitrate: 'CRF 20, auto-capped to 16 MB',
+      maxFps: 30, audio: 'AAC 128k', maxSize: '16 MB', note: 'Best quality within size limit'
+    },
+    optimized: {
+      res: '720x1280', codec: 'H.264 Main 3.1', bitrate: 'CRF 26, auto-capped to 16 MB',
+      maxFps: 30, audio: 'AAC 96k', maxSize: '16 MB', note: 'Smaller files, faster send'
+    },
+  },
+  telegram: {
+    max: {
+      res: '1080x1920', codec: 'H.264 High 4.2', bitrate: 'CRF 18, max 20 Mbps',
+      maxFps: 60, audio: 'AAC 192k', maxSize: '2 GB', note: 'Full quality, 60fps preserved'
+    },
+    optimized: {
+      res: '1080x1920', codec: 'H.264 Main 4.0', bitrate: 'CRF 23, max 6 Mbps',
+      maxFps: 60, audio: 'AAC 128k', maxSize: '2 GB', note: 'Fast streaming, good quality'
+    },
+  },
+};
+
+// ---- Drop zone ----
+const dropzone = $('#dropzone');
+const fileInput = $('#fileInput');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
+
+async function uploadFile(file) {
+  dropzone.querySelector('h2').textContent = 'Uploading...';
+  const fd = new FormData();
+  fd.append('file', file);
+  const resp = await fetch('/upload', { method: 'POST', body: fd });
+  if (!resp.ok) { dropzone.querySelector('h2').textContent = 'Upload failed, try again'; return; }
+  videoInfo = await resp.json();
+  initEditor();
+}
+
+// ---- Platform selector ----
+function updatePlatformUI() {
+  document.querySelectorAll('.platform-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.platform === selectedPlatform);
+  });
+  document.querySelectorAll('#qualityToggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.quality === selectedQuality);
+  });
+  const info = PLATFORM_INFO[selectedPlatform][selectedQuality];
+  const srcFps = videoInfo ? videoInfo.fps : null;
+  const outFps = srcFps ? Math.min(srcFps, info.maxFps) : info.maxFps;
+  const fpsLabel = srcFps
+    ? (srcFps <= info.maxFps ? `${srcFps} fps (original)` : `${outFps} fps (capped from ${srcFps})`)
+    : `up to ${info.maxFps} fps`;
+  $('#platformDetails').innerHTML =
+    `<span>${info.res}</span> &middot; ${info.codec} &middot; ${fpsLabel} &middot; ${info.audio}<br>` +
+    `${info.bitrate} &middot; Max <span>${info.maxSize}</span> &middot; ${info.note}`;
+  if (videoInfo) syncCropAspect();
+}
+function selectPlatform(platform) {
+  selectedPlatform = platform;
+  updatePlatformUI();
+}
+function selectQuality(quality) {
+  selectedQuality = quality;
+  updatePlatformUI();
+}
+$('#platformGrid').addEventListener('click', e => {
+  const btn = e.target.closest('.platform-btn');
+  if (btn) selectPlatform(btn.dataset.platform);
+});
+$('#qualityToggle').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (btn) selectQuality(btn.dataset.quality);
+});
+selectPlatform('instagram');
+
+// ---- Editor ----
+const video = $('#video');
+const cropCanvas = $('#cropCanvas');
+const cropCtx = cropCanvas.getContext('2d');
+
+function initEditor() {
+  dropzone.style.display = 'none';
+  $('#editor').classList.add('active');
+
+  video.src = `/video/${videoInfo.id}`;
+  video.load();
+  trimRange = [0, videoInfo.duration];
+
+  video.addEventListener('loadedmetadata', () => {
+    $('#totalTime').textContent = fmtTime(video.duration);
+    initCropCanvas();
+    initCropBoxes();
+    initPreview();
+    updateTimeline();
+    startPreviewLoop();
+    selectPlatform(selectedPlatform);
+  });
+}
+
+function fmtTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+function fmtTimePrecise(s) {
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(1);
+  return `${m}:${sec.padStart(4, '0')}`;
+}
+
+// ---- Timeline / trim ----
+const timelineBar = $('#timelineBar');
+const timelineRange = $('#timelineRange');
+const playhead = $('#playhead');
+
+function updateTimeline() {
+  const dur = videoInfo.duration;
+  const startPct = (trimRange[0] / dur) * 100;
+  const endPct = (trimRange[1] / dur) * 100;
+  timelineRange.style.left = startPct + '%';
+  timelineRange.style.width = (endPct - startPct) + '%';
+  $('#trimStart').style.left = `calc(${startPct}% - 7px)`;
+  $('#trimEnd').style.left = `calc(${endPct}% - 7px)`;
+  $('#trimStartTime').textContent = fmtTimePrecise(trimRange[0]);
+  $('#trimEndTime').textContent = fmtTimePrecise(trimRange[1]);
+  const d = trimRange[1] - trimRange[0];
+  $('#trimDuration').textContent = `Duration: ${fmtTime(d)}`;
+}
+
+function timelinePointerHandler(type) {
+  return function(e) {
+    e.preventDefault();
+    const bar = timelineBar.getBoundingClientRect();
+    const move = ev => {
+      const pct = Math.max(0, Math.min(1, (ev.clientX - bar.left) / bar.width));
+      const t = pct * videoInfo.duration;
+      if (type === 'start') { trimRange[0] = Math.min(t, trimRange[1] - 0.1); }
+      else { trimRange[1] = Math.max(t, trimRange[0] + 0.1); }
+      updateTimeline();
+      video.currentTime = type === 'start' ? trimRange[0] : trimRange[1];
+    };
+    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+}
+$('#trimStart').addEventListener('pointerdown', timelinePointerHandler('start'));
+$('#trimEnd').addEventListener('pointerdown', timelinePointerHandler('end'));
+
+timelineBar.addEventListener('click', e => {
+  if (e.target.classList.contains('timeline-handle')) return;
+  const bar = timelineBar.getBoundingClientRect();
+  const pct = (e.clientX - bar.left) / bar.width;
+  video.currentTime = pct * videoInfo.duration;
+});
+
+// Playback
+$('#playBtn').addEventListener('click', () => {
+  if (video.paused) {
+    if (video.currentTime < trimRange[0] || video.currentTime >= trimRange[1]) video.currentTime = trimRange[0];
+    video.play();
+    $('#playBtn').textContent = 'Pause';
+  } else {
+    video.pause();
+    $('#playBtn').textContent = 'Play';
+  }
+});
+
+video.addEventListener('timeupdate', () => {
+  if (video.currentTime >= trimRange[1]) { video.pause(); video.currentTime = trimRange[0]; $('#playBtn').textContent = 'Play'; }
+  const pct = (video.currentTime / videoInfo.duration) * 100;
+  playhead.style.left = pct + '%';
+  $('#currentTime').textContent = fmtTime(video.currentTime);
+});
+
+// ---- Crop canvas ----
+function initCropCanvas() {
+  const wrap = $('#cropCanvasWrap');
+  const maxW = wrap.parentElement.clientWidth - 32;
+  const aspect = videoInfo.width / videoInfo.height;
+  const dispW = Math.min(maxW, 800);
+  const dispH = dispW / aspect;
+  cropCanvas.width = dispW;
+  cropCanvas.height = dispH;
+  wrap.style.width = dispW + 'px';
+  wrap.style.height = dispH + 'px';
+}
+
+function drawCropFrame() {
+  cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+  cropCtx.drawImage(video, 0, 0, cropCanvas.width, cropCanvas.height);
+}
+
+// ---- Crop boxes ----
+function initCropBoxes() {
+  const w = cropCanvas.width;
+  const h = cropCanvas.height;
+  // Default: top half for top, bottom half for bottom
+  crops.top = { x: 0, y: 0, w: w * 0.6, h: h * 0.45 };
+  crops.bottom = { x: w * 0.2, y: h * 0.5, w: w * 0.6, h: h * 0.45 };
+  applyCropBoxPositions();
+  setupCropDrag('topCrop', 'top');
+  setupCropDrag('bottomCrop', 'bottom');
+}
+
+function applyCropBoxPositions() {
+  const topEl = $('#topCrop');
+  const botEl = $('#bottomCrop');
+  const t = crops.top;
+  const b = crops.bottom;
+  topEl.style.left = t.x + 'px'; topEl.style.top = t.y + 'px';
+  topEl.style.width = t.w + 'px'; topEl.style.height = t.h + 'px';
+  botEl.style.left = b.x + 'px'; botEl.style.top = b.y + 'px';
+  botEl.style.width = b.w + 'px'; botEl.style.height = b.h + 'px';
+}
+
+function setupCropDrag(elId, key) {
+  const el = $(`#${elId}`);
+  const wrap = $('#cropCanvasWrap');
+
+  el.addEventListener('pointerdown', e => {
+    if (e.target.classList.contains('resize-handle')) return;
+    e.preventDefault();
+    const rect = wrap.getBoundingClientRect();
+    const startX = e.clientX - crops[key].x;
+    const startY = e.clientY - crops[key].y;
+
+    const move = ev => {
+      let nx = ev.clientX - startX;
+      let ny = ev.clientY - startY;
+      nx = Math.max(0, Math.min(nx, cropCanvas.width - crops[key].w));
+      ny = Math.max(0, Math.min(ny, cropCanvas.height - crops[key].h));
+      crops[key].x = nx;
+      crops[key].y = ny;
+      applyCropBoxPositions();
+    };
+    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  });
+
+  // Resize handles (aspect-ratio locked)
+  el.querySelectorAll('.resize-handle').forEach(handle => {
+    handle.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const isLeft = handle.classList.contains('nw') || handle.classList.contains('sw');
+      const isTop = handle.classList.contains('nw') || handle.classList.contains('ne');
+      const startMX = e.clientX, startMY = e.clientY;
+      const orig = { ...crops[key] };
+      const aspect = orig.w / orig.h;
+      const minW = 30;
+
+      const move = ev => {
+        const dx = ev.clientX - startMX;
+        let { x, y, w, h } = orig;
+
+        if (isLeft) { w -= dx; } else { w += dx; }
+        if (w < minW) w = minW;
+        h = w / aspect;
+
+        if (isLeft) { x = orig.x + orig.w - w; }
+        if (isTop) { y = orig.y + orig.h - h; }
+
+        x = Math.max(0, x);
+        y = Math.max(0, y);
+        if (x + w > cropCanvas.width) { w = cropCanvas.width - x; h = w / aspect; }
+        if (y + h > cropCanvas.height) { h = cropCanvas.height - y; w = h * aspect; }
+
+        crops[key] = { x, y, w, h };
+        applyCropBoxPositions();
+      };
+      const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up);
+    });
+  });
+}
+
+// ---- Preview ----
+const previewTopCanvas = $('#previewTopCanvas');
+const previewBottomCanvas = $('#previewBottomCanvas');
+const previewTopCtx = previewTopCanvas.getContext('2d');
+const previewBottomCtx = previewBottomCanvas.getContext('2d');
+const previewPhone = $('#previewPhone');
+const splitHandle = $('#splitHandle');
+
+function initPreview() {
+  updatePreviewLayout();
+}
+
+function updatePreviewLayout() {
+  const phoneW = 270;
+  const phoneH = 480;
+  const topH = Math.round(phoneH * splitRatio);
+  const botH = phoneH - topH;
+
+  $('#previewTop').style.top = '0';
+  $('#previewTop').style.height = topH + 'px';
+  previewTopCanvas.width = phoneW;
+  previewTopCanvas.height = topH;
+
+  splitHandle.style.top = topH + 'px';
+
+  $('#previewBottom').style.top = topH + 'px';
+  $('#previewBottom').style.height = botH + 'px';
+  previewBottomCanvas.width = phoneW;
+  previewBottomCanvas.height = botH;
+
+  $('#splitInfo').textContent = `Split: ${Math.round(splitRatio * 100)}% / ${Math.round((1 - splitRatio) * 100)}% — Drag the red bar to adjust`;
+
+  syncCropAspect();
+}
+
+function getOutputDims() {
+  const info = PLATFORM_INFO[selectedPlatform][selectedQuality];
+  const [w, h] = info.res.split('x').map(Number);
+  return { w, h };
+}
+
+function syncCropAspect() {
+  if (!videoInfo) return;
+  const { w: outW, h: outH } = getOutputDims();
+  const topSectionH = outH * splitRatio;
+  const botSectionH = outH * (1 - splitRatio);
+  const topAspect = outW / topSectionH;
+  const botAspect = outW / botSectionH;
+
+  adjustCropToAspect('top', topAspect);
+  adjustCropToAspect('bottom', botAspect);
+  applyCropBoxPositions();
+}
+
+function adjustCropToAspect(key, targetAspect) {
+  const c = crops[key];
+  const newH = c.w / targetAspect;
+  const clampedH = Math.min(newH, cropCanvas.height);
+  const finalW = clampedH * targetAspect;
+  c.w = Math.min(finalW, cropCanvas.width);
+  c.h = clampedH;
+  if (c.x + c.w > cropCanvas.width) c.x = cropCanvas.width - c.w;
+  if (c.y + c.h > cropCanvas.height) c.y = cropCanvas.height - c.h;
+  if (c.x < 0) c.x = 0;
+  if (c.y < 0) c.y = 0;
+}
+
+// Split handle drag
+splitHandle.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const phoneRect = previewPhone.getBoundingClientRect();
+  const move = ev => {
+    const y = ev.clientY - phoneRect.top;
+    splitRatio = Math.max(0.15, Math.min(0.85, y / phoneRect.height));
+    updatePreviewLayout();
+  };
+  const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+});
+
+// ---- Render loop ----
+function startPreviewLoop() {
+  function loop() {
+    drawCropFrame();
+    drawPreview();
+    animFrameId = requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+function drawPreview() {
+  const t = crops.top;
+  const b = crops.bottom;
+  const scale = videoInfo.width / cropCanvas.width;
+
+  const sx1 = t.x * scale, sy1 = t.y * scale, sw1 = t.w * scale, sh1 = t.h * scale;
+  previewTopCtx.clearRect(0, 0, previewTopCanvas.width, previewTopCanvas.height);
+  if (sw1 > 0 && sh1 > 0)
+    previewTopCtx.drawImage(video, sx1, sy1, sw1, sh1, 0, 0, previewTopCanvas.width, previewTopCanvas.height);
+
+  const sx2 = b.x * scale, sy2 = b.y * scale, sw2 = b.w * scale, sh2 = b.h * scale;
+  previewBottomCtx.clearRect(0, 0, previewBottomCanvas.width, previewBottomCanvas.height);
+  if (sw2 > 0 && sh2 > 0)
+    previewBottomCtx.drawImage(video, sx2, sy2, sw2, sh2, 0, 0, previewBottomCanvas.width, previewBottomCanvas.height);
+}
+
+// ---- Render ----
+$('#renderBtn').addEventListener('click', async () => {
+  const btn = $('#renderBtn');
+  const status = $('#renderStatus');
+  btn.disabled = true;
+  status.className = 'render-status rendering';
+  status.textContent = 'Rendering... this may take a while';
+  status.style.display = 'block';
+
+  const scale = videoInfo.width / cropCanvas.width;
+
+  const fd = new FormData();
+  fd.append('file_id', videoInfo.id);
+  fd.append('ext', videoInfo.ext);
+  fd.append('trim_start', trimRange[0]);
+  fd.append('trim_end', trimRange[1]);
+  fd.append('src_width', videoInfo.width);
+  fd.append('src_height', videoInfo.height);
+  fd.append('top_x', crops.top.x * scale);
+  fd.append('top_y', crops.top.y * scale);
+  fd.append('top_w', crops.top.w * scale);
+  fd.append('top_h', crops.top.h * scale);
+  fd.append('bottom_x', crops.bottom.x * scale);
+  fd.append('bottom_y', crops.bottom.y * scale);
+  fd.append('bottom_w', crops.bottom.w * scale);
+  fd.append('bottom_h', crops.bottom.h * scale);
+  fd.append('split_ratio', splitRatio);
+  fd.append('platform', selectedPlatform);
+  fd.append('quality', selectedQuality);
+  fd.append('source_fps', videoInfo.fps);
+
+  try {
+    const resp = await fetch('/render', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (resp.ok) {
+      status.className = 'render-status done';
+      status.innerHTML = `Done! ${data.resolution} &middot; ${data.fps} fps &middot; ${data.size_mb} MB` +
+        ` &middot; <a href="${data.url}" download="${data.filename}">Download</a>`;
+    } else {
+      status.className = 'render-status error';
+      status.textContent = 'Error: ' + (data.error || 'Unknown error');
+    }
+  } catch (err) {
+    status.className = 'render-status error';
+    status.textContent = 'Network error: ' + err.message;
+  }
+  btn.disabled = false;
+});
+
+// ---- Reset ----
+$('#resetBtn').addEventListener('click', () => {
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  video.pause();
+  video.src = '';
+  videoInfo = null;
+  splitRatio = 0.5;
+  trimRange = [0, 1];
+  $('#editor').classList.remove('active');
+  dropzone.style.display = '';
+  dropzone.querySelector('h2').textContent = 'Drop a video file here';
+  $('#renderStatus').style.display = 'none';
+  $('#playBtn').textContent = 'Play';
+});
+</script>
+</body>
+</html>
