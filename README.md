@@ -41,8 +41,6 @@ uv sync
 
 ## Usage
 
-### Desktop app (PySide6)
-
 ```bash
 uv run python -m trimmy
 ```
@@ -53,15 +51,7 @@ Or open a file directly:
 uv run python -m trimmy path/to/video.mp4
 ```
 
-### Web app (FastAPI)
-
-```bash
-uv run python app.py
-```
-
-Then open http://127.0.0.1:8000 in your browser.
-
-## Keyboard shortcuts (desktop)
+## Keyboard shortcuts
 
 | Key       | Action           |
 |-----------|------------------|
