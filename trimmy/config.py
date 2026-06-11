@@ -1,9 +1,12 @@
 """Persistent configuration for Trimmy user preferences."""
 
+from __future__ import annotations
+
 import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 
 def _config_dir() -> Path:
@@ -25,7 +28,7 @@ def _config_dir() -> Path:
 
 CONFIG_PATH = _config_dir() / "config.json"
 
-_DEFAULTS: dict = {
+_DEFAULTS: dict[str, Any] = {
     "selected_platform": "instagram",
     "selected_format": "feed",
     "selected_quality": "max",
@@ -37,7 +40,7 @@ _DEFAULTS: dict = {
 }
 
 
-def load() -> dict:
+def load() -> dict[str, Any]:
     """Load config from disk, falling back to defaults."""
     if not CONFIG_PATH.exists():
         return dict(_DEFAULTS)
@@ -51,7 +54,7 @@ def load() -> dict:
         return merged
 
 
-def save(state: dict) -> None:
+def save(state: dict[str, Any]) -> None:
     """Write config state to disk as JSON."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
