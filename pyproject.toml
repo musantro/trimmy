@@ -21,6 +21,25 @@ dev = [
     "prek>=0.4",
     "ruff>=0.15",
     "ty>=0.0.48",
+    "pytest>=8.0",
+    "pytest-cov",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=trimmy --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+omit = [
+    "trimmy/__main__.py",
+    "trimmy/widgets.py",
+    "trimmy/main_window.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__",
 ]
 
 [tool.ruff.lint]
