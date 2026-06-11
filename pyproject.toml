@@ -11,3 +11,15 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 trimmy = "trimmy.__main__:main"
+
+[dependency-groups]
+dev = [
+    "commitizen>=4.16",
+    "pre-commit>=4",
+]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "pep621"
+tag_format = "v$version"
+update_changelog_on_bump = true
