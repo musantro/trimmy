@@ -1,6 +1,7 @@
 import json
 import logging
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +23,43 @@ class CropRect:
     y: float = 0.0
     w: float = 0.0
     h: float = 0.0
+
+
+class RenderContext:
+    """Wraps FFmpeg subprocess execution with cancellation support."""
+
+    def __init__(self):
+        self._proc = None
+        self._lock = threading.Lock()
+        self._cancelled = False
+
+    def cancel(self):
+        with self._lock:
+            self._cancelled = True
+            if self._proc is not None:
+                try:
+                    self._proc.kill()
+                except OSError:
+                    pass
+
+    @property
+    def cancelled(self):
+        return self._cancelled
+
+    def run(self, cmd):
+        with self._lock:
+            if self._cancelled:
+                return None
+            self._proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+        stdout, stderr = self._proc.communicate()
+        with self._lock:
+            returncode = self._proc.returncode
+            self._proc = None
+            if self._cancelled:
+                return None
+        return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
 
 
 def detect_gpu_encoder():
@@ -143,7 +181,10 @@ def render_video(
     platform: str,
     quality: str,
     source_fps: float,
+    ctx: RenderContext = None,
 ) -> dict:
+    if ctx is None:
+        ctx = RenderContext()
     preset = PLATFORM_PRESETS[platform][quality]
     output_width = preset["width"]
     output_height = preset["height"]
@@ -189,7 +230,9 @@ def render_video(
         gpu_args = _gpu_codec_args(gpu_enc, preset)
         cmd = _build_render_cmd(src_path, out_path, trim_start, trim_end,
                                 filter_complex, gpu_args, preset, maxrate, bufsize)
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        proc = ctx.run(cmd)
+        if proc is None:
+            return {"error": "Cancelled"}
         if proc.returncode == 0:
             file_size_mb = out_path.stat().st_size / (1024 * 1024)
             return {
@@ -201,10 +244,15 @@ def render_video(
         logger.warning("GPU encode failed (%s), falling back to libx264: %s",
                        gpu_enc, proc.stderr[-500:])
 
+    if ctx.cancelled:
+        return {"error": "Cancelled"}
+
     cpu_args = _cpu_codec_args(preset)
     cmd = _build_render_cmd(src_path, out_path, trim_start, trim_end,
                             filter_complex, cpu_args, preset, maxrate, bufsize)
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = ctx.run(cmd)
+    if proc is None:
+        return {"error": "Cancelled"}
     if proc.returncode != 0:
         return {"error": proc.stderr[-2000:]}
 

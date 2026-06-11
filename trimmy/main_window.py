@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QImage, QPainter, QFont, QColor, QPen
 
 from trimmy.presets import PLATFORM_PRESETS, PLATFORM_INFO, PLATFORM_FORMATS
-from trimmy.renderer import probe_video, render_video, CropRect
+from trimmy.renderer import probe_video, render_video, CropRect, RenderContext
 from trimmy.widgets import CropWidget, PreviewWidget, TimelineWidget
 
 
@@ -63,6 +63,8 @@ QPushButton:disabled { background: #444; color: #888; }
 QPushButton#render { background: #e94560; color: #fff; }
 QPushButton#render:hover { background: #d63851; }
 QPushButton#render:disabled { background: #555; color: #888; }
+QPushButton#stop { background: #e07020; color: #fff; }
+QPushButton#stop:hover { background: #f08030; }
 QLabel#section { color: #aaa; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 QLabel#status { padding: 8px 12px; border-radius: 6px; font-size: 13px; }
 QLabel#info { color: #888; font-size: 12px; }
@@ -83,6 +85,10 @@ class RenderThread(QThread):
         super().__init__()
         self._kwargs = kwargs
         self._max_duration = max_duration
+        self._ctx = RenderContext()
+
+    def stop(self):
+        self._ctx.cancel()
 
     def run(self):
         trim_start = self._kwargs["trim_start"]
@@ -90,7 +96,7 @@ class RenderThread(QThread):
         total_duration = trim_end - trim_start
 
         if self._max_duration is None or total_duration <= self._max_duration:
-            result = render_video(**self._kwargs)
+            result = render_video(**self._kwargs, ctx=self._ctx)
             self.finished.emit(result)
             return
 
@@ -99,6 +105,9 @@ class RenderThread(QThread):
         results = []
 
         for i in range(num_parts):
+            if self._ctx.cancelled:
+                results.append({"error": "Cancelled"})
+                break
             self.progress.emit(i + 1, num_parts)
             seg_start = trim_start + i * self._max_duration
             seg_end = min(trim_start + (i + 1) * self._max_duration, trim_end)
@@ -109,7 +118,7 @@ class RenderThread(QThread):
             seg_kwargs["trim_end"] = seg_end
             seg_kwargs["out_path"] = seg_path
 
-            result = render_video(**seg_kwargs)
+            result = render_video(**seg_kwargs, ctx=self._ctx)
             result["part"] = i + 1
             result["total_parts"] = num_parts
             result["path"] = str(seg_path)
@@ -228,9 +237,14 @@ class MainWindow(QMainWindow):
         self.render_btn = QPushButton("Render Video")
         self.render_btn.setObjectName("render")
         self.render_btn.clicked.connect(self._render)
+        self.stop_btn = QPushButton("Stop Render")
+        self.stop_btn.setObjectName("stop")
+        self.stop_btn.clicked.connect(self._stop_render)
+        self.stop_btn.setVisible(False)
         self.open_btn = QPushButton("Open Video")
         self.open_btn.clicked.connect(self._open_dialog)
         act.addWidget(self.render_btn)
+        act.addWidget(self.stop_btn)
         act.addWidget(self.open_btn)
         act.addStretch()
         left.addLayout(act)
@@ -484,6 +498,7 @@ class MainWindow(QMainWindow):
             return
 
         self.render_btn.setEnabled(False)
+        self.stop_btn.setVisible(True)
         self.status_label.setStyleSheet("background: #0f3460; color: #4ecdc4; padding: 8px 12px; border-radius: 6px;")
         self.status_label.setText("Rendering... this may take a while")
 
@@ -509,6 +524,19 @@ class MainWindow(QMainWindow):
 
     def _on_render_done(self, result, out_path):
         self.render_btn.setEnabled(True)
+        self.stop_btn.setVisible(False)
+
+        cancelled = (
+            (isinstance(result, dict) and result.get("error") == "Cancelled")
+            or (isinstance(result, list) and any(r.get("error") == "Cancelled" for r in result))
+        )
+        if cancelled:
+            self.status_label.setStyleSheet(
+                "background: #3a3a1e; color: #e0c040; padding: 8px 12px; border-radius: 6px;"
+            )
+            self.status_label.setText("Render stopped.")
+            return
+
         if isinstance(result, list):
             errors = [r for r in result if "error" in r]
             if errors:
@@ -534,6 +562,18 @@ class MainWindow(QMainWindow):
                 f"Done! {result['resolution']}  ·  {result['fps']} fps  ·  "
                 f"{result['size_mb']} MB  ·  {encoder}  →  {out_path}"
             )
+
+    def _stop_render(self):
+        if self._render_thread is not None and self._render_thread.isRunning():
+            self._render_thread.stop()
+
+    def closeEvent(self, event):
+        if self._render_thread is not None and self._render_thread.isRunning():
+            self._render_thread.finished.disconnect()
+            self._render_thread.stop()
+            self._render_thread.wait()
+        self.player.stop()
+        super().closeEvent(event)
 
     # ---- keyboard ----
 
