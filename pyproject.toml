@@ -10,4 +10,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.scripts]
-trimmy = "video_trimmer.__main__:main"
+trimmy = "trimmy.__main__:main"

@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, Signal, QRectF, QPointF, QSize
 from PySide6.QtGui import QPainter, QImage, QColor, QPen, QFont, QCursor
 from PySide6.QtWidgets import QWidget, QSizePolicy
 
-from video_trimmer.renderer import CropRect
+from trimmy.renderer import CropRect
 
 
 class CropWidget(QWidget):

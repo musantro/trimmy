@@ -153,3 +153,24 @@ PLATFORM_INFO = {
         },
     },
 }
+
+PLATFORM_FORMATS = {
+    "instagram": [
+        {"key": "feed", "label": "Feed", "max_duration": 3600},
+        {"key": "reels", "label": "Reels", "max_duration": 90},
+        {"key": "stories", "label": "Stories", "max_duration": 60},
+    ],
+    "tiktok": [
+        {"key": "video", "label": "Video", "max_duration": 600},
+    ],
+    "twitter": [
+        {"key": "post", "label": "Post", "max_duration": 140},
+    ],
+    "whatsapp": [
+        {"key": "chat", "label": "Chat", "max_duration": None},
+        {"key": "status", "label": "Status", "max_duration": 30},
+    ],
+    "telegram": [
+        {"key": "message", "label": "Message", "max_duration": None},
+    ],
+}
