@@ -1,32 +1,57 @@
+"""Main application window, render thread, and drop overlay."""
+
+import logging
 import math
 import shutil
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl, QThread, Signal
-from PySide6.QtMultimedia import QMediaPlayer, QVideoSink, QAudioOutput
+from PySide6.QtCore import Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QVideoSink
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QFileDialog, QMessageBox, QFrame, QSizePolicy,
+    QApplication,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
     QMenu,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from PySide6.QtGui import QImage, QPainter, QFont, QColor, QPen
-
 from trimmy import config
-
-from trimmy.presets import PLATFORM_PRESETS, PLATFORM_INFO, PLATFORM_FORMATS
-from trimmy.renderer import probe_video, render_video, CropRect, RenderContext
+from trimmy.presets import PLATFORM_FORMATS, PLATFORM_INFO
+from trimmy.renderer import CropRect, RenderContext, probe_video, render_video
 from trimmy.widgets import CropWidget, PreviewWidget, TimelineWidget
+
+logger = logging.getLogger(__name__)
+
+_STYLE_ERROR = (
+    "background: #4a1a1a; color: #e94560;"
+    " padding: 8px 12px; border-radius: 6px;"
+)
+_STYLE_SUCCESS = (
+    "background: #1a4a2e; color: #4ecdc4;"
+    " padding: 8px 12px; border-radius: 6px;"
+)
 
 
 class DropOverlay(QWidget):
-    def __init__(self, parent=None):
+    """Semi-transparent overlay shown while dragging a file onto the window."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.hide()
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            False,  # noqa: FBT003
+        )
 
-    def paintEvent(self, event):
+    def paintEvent(self, event) -> None:  # noqa: N802
+        """Draw the drop-target border and label."""
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.fillRect(self.rect(), QColor(10, 10, 30, 200))
@@ -37,22 +62,27 @@ class DropOverlay(QWidget):
         p.setBrush(Qt.NoBrush)
         margin = 40
         p.drawRoundedRect(
-            margin, margin,
-            self.width() - 2 * margin, self.height() - 2 * margin,
-            16, 16,
+            margin,
+            margin,
+            self.width() - 2 * margin,
+            self.height() - 2 * margin,
+            16,
+            16,
         )
 
         p.setPen(QColor("#e94560"))
         font = QFont()
         font.setPointSize(28)
-        font.setBold(True)
+        font.setBold(True)  # noqa: FBT003
         p.setFont(font)
         p.drawText(self.rect(), Qt.AlignCenter, "Drop video here")
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Forward resize to the base class."""
         super().resizeEvent(event)
 
-STYLESHEET = """
+
+STYLESHEET = """\
 QMainWindow, QWidget#central { background: #1a1a2e; }
 QLabel { color: #e0e0e0; }
 QPushButton {
@@ -67,7 +97,10 @@ QPushButton#render:hover { background: #d63851; }
 QPushButton#render:disabled { background: #555; color: #888; }
 QPushButton#stop { background: #e07020; color: #fff; }
 QPushButton#stop:hover { background: #f08030; }
-QLabel#section { color: #aaa; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+QLabel#section {
+    color: #aaa; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 1px;
+}
 QLabel#status { padding: 8px 12px; border-radius: 6px; font-size: 13px; }
 QLabel#info { color: #888; font-size: 12px; }
 QMenu {
@@ -80,31 +113,41 @@ QMenu::item:selected { background: #1a4a80; }
 
 
 class RenderThread(QThread):
+    """Background thread that runs one or more render passes."""
+
     finished = Signal(object)
     progress = Signal(int, int)
 
-    def __init__(self, max_duration=None, **kwargs):
+    def __init__(
+        self,
+        max_duration: float | None = None,
+        **kwargs: object,
+    ) -> None:
         super().__init__()
         self._kwargs = kwargs
         self._max_duration = max_duration
         self._ctx = RenderContext()
 
-    def stop(self):
+    def stop(self) -> None:
+        """Request cancellation of the running render."""
         self._ctx.cancel()
 
-    def run(self):
+    def run(self) -> None:  # noqa: D102
         trim_start = self._kwargs["trim_start"]
         trim_end = self._kwargs["trim_end"]
         total_duration = trim_end - trim_start
 
-        if self._max_duration is None or total_duration <= self._max_duration:
+        if (
+            self._max_duration is None
+            or total_duration <= self._max_duration
+        ):
             result = render_video(**self._kwargs, ctx=self._ctx)
             self.finished.emit(result)
             return
 
         num_parts = math.ceil(total_duration / self._max_duration)
         out_path = self._kwargs["out_path"]
-        results = []
+        results: list[dict] = []
 
         for i in range(num_parts):
             if self._ctx.cancelled:
@@ -112,8 +155,13 @@ class RenderThread(QThread):
                 break
             self.progress.emit(i + 1, num_parts)
             seg_start = trim_start + i * self._max_duration
-            seg_end = min(trim_start + (i + 1) * self._max_duration, trim_end)
-            seg_path = out_path.parent / f"{out_path.stem}_part{i + 1}.mp4"
+            seg_end = min(
+                trim_start + (i + 1) * self._max_duration,
+                trim_end,
+            )
+            seg_path = (
+                out_path.parent / f"{out_path.stem}_part{i + 1}.mp4"
+            )
 
             seg_kwargs = dict(self._kwargs)
             seg_kwargs["trim_start"] = seg_start
@@ -133,27 +181,29 @@ class RenderThread(QThread):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, file_path=None):
+    """Primary application window with crop, preview, and render controls."""
+
+    def __init__(self, file_path: str | None = None) -> None:
         super().__init__()
         self.setWindowTitle("Trimmy")
         self.setMinimumSize(1100, 750)
         self.setStyleSheet(STYLESHEET)
 
-        self.setAcceptDrops(True)
+        self.setAcceptDrops(True)  # noqa: FBT003
 
-        self.video_info = None
-        self.current_frame = None
+        self.video_info: dict | None = None
+        self.current_frame: QImage | None = None
         self._cfg = config.load()
-        self.selected_platform = self._cfg["selected_platform"]
-        self.selected_format = self._cfg["selected_format"]
-        self.selected_quality = self._cfg["selected_quality"]
-        self.split_ratio = self._cfg["split_ratio"]
+        self.selected_platform: str = self._cfg["selected_platform"]
+        self.selected_format: str = self._cfg["selected_format"]
+        self.selected_quality: str = self._cfg["selected_quality"]
+        self.split_ratio: float = self._cfg["split_ratio"]
         self._waiting_first_frame = False
-        self._render_thread = None
+        self._render_thread: RenderThread | None = None
 
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
-        self.audio.setMuted(True)
+        self.audio.setMuted(True)  # noqa: FBT003
         self.player.setAudioOutput(self.audio)
         self.sink = QVideoSink()
         self.player.setVideoSink(self.sink)
@@ -165,7 +215,9 @@ class MainWindow(QMainWindow):
         if file_path:
             self.open_file(file_path)
 
-    def _build_ui(self):
+    # ---- UI construction ----
+
+    def _build_ui(self) -> None:  # noqa: PLR0915
         central = QWidget()
         central.setObjectName("central")
         self.setCentralWidget(central)
@@ -196,8 +248,8 @@ class MainWindow(QMainWindow):
         # platform row
         left.addWidget(self._section_label("Platform"))
         plat = QHBoxLayout()
-        self._platform_btns = {}
-        self._platform_labels = {}
+        self._platform_btns: dict[str, QPushButton] = {}
+        self._platform_labels: dict[str, str] = {}
         for name, label in [
             ("instagram", "Instagram"),
             ("tiktok", "TikTok"),
@@ -206,9 +258,11 @@ class MainWindow(QMainWindow):
             ("telegram", "Telegram"),
         ]:
             btn = QPushButton(label)
-            btn.setCheckable(True)
+            btn.setCheckable(True)  # noqa: FBT003
             btn.setChecked(name == self.selected_platform)
-            btn.clicked.connect(lambda _, n=name: self._on_platform_click(n))
+            btn.clicked.connect(
+                lambda _, n=name: self._on_platform_click(n),
+            )
             plat.addWidget(btn)
             self._platform_btns[name] = btn
             self._platform_labels[name] = label
@@ -218,12 +272,14 @@ class MainWindow(QMainWindow):
         # quality row
         qual = QHBoxLayout()
         qual.addWidget(QLabel("Quality:"))
-        self._quality_btns = {}
+        self._quality_btns: dict[str, QPushButton] = {}
         for q, label in [("max", "Max"), ("optimized", "Optimized")]:
             btn = QPushButton(label)
-            btn.setCheckable(True)
+            btn.setCheckable(True)  # noqa: FBT003
             btn.setChecked(q == self.selected_quality)
-            btn.clicked.connect(lambda _, qq=q: self._select_quality(qq))
+            btn.clicked.connect(
+                lambda _, qq=q: self._select_quality(qq),
+            )
             qual.addWidget(btn)
             self._quality_btns[q] = btn
         qual.addStretch()
@@ -231,7 +287,7 @@ class MainWindow(QMainWindow):
 
         self.info_label = QLabel()
         self.info_label.setObjectName("info")
-        self.info_label.setWordWrap(True)
+        self.info_label.setWordWrap(True)  # noqa: FBT003
         left.addWidget(self.info_label)
         self._update_info()
 
@@ -243,7 +299,7 @@ class MainWindow(QMainWindow):
         self.stop_btn = QPushButton("Stop Render")
         self.stop_btn.setObjectName("stop")
         self.stop_btn.clicked.connect(self._stop_render)
-        self.stop_btn.setVisible(False)
+        self.stop_btn.setVisible(False)  # noqa: FBT003
         self.open_btn = QPushButton("Open Video")
         self.open_btn.clicked.connect(self._open_dialog)
         act.addWidget(self.render_btn)
@@ -254,7 +310,7 @@ class MainWindow(QMainWindow):
 
         self.status_label = QLabel()
         self.status_label.setObjectName("status")
-        self.status_label.setWordWrap(True)
+        self.status_label.setWordWrap(True)  # noqa: FBT003
         left.addWidget(self.status_label)
 
         # right panel
@@ -265,9 +321,14 @@ class MainWindow(QMainWindow):
         self.preview.split_ratio = self.split_ratio
         right.addWidget(self.preview, alignment=Qt.AlignHCenter)
         pct = int(self.split_ratio * 100)
-        self.split_label = QLabel(f"Split: {pct}% / {100 - pct}% — Drag the red bar to adjust")
+        self.split_label = QLabel(
+            f"Split: {pct}% / {100 - pct}%"
+            " — Drag the red bar to adjust",
+        )
         self.split_label.setAlignment(Qt.AlignCenter)
-        self.split_label.setStyleSheet("color: #888; font-size: 12px;")
+        self.split_label.setStyleSheet(
+            "color: #888; font-size: 12px;",
+        )
         right.addWidget(self.split_label)
         right.addStretch()
 
@@ -276,7 +337,9 @@ class MainWindow(QMainWindow):
 
         # signals
         self.crop_widget.crops_changed.connect(self._on_crops_changed)
-        self.preview.split_ratio_changed.connect(self._on_split_changed)
+        self.preview.split_ratio_changed.connect(
+            self._on_split_changed,
+        )
         self.timeline.range_changed.connect(self._on_range_changed)
         self.timeline.seek_requested.connect(self._on_seek)
 
@@ -285,37 +348,52 @@ class MainWindow(QMainWindow):
         self._drop_overlay.hide()
 
     @staticmethod
-    def _section_label(text):
+    def _section_label(text: str) -> QLabel:
         lbl = QLabel(text)
         lbl.setObjectName("section")
         return lbl
 
     # ---- file open ----
 
-    def _open_dialog(self):
+    def _open_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open Video", "",
-            "Video Files (*.mp4 *.mkv *.mov *.avi *.webm);;All Files (*)",
+            self,
+            "Open Video",
+            "",
+            "Video Files (*.mp4 *.mkv *.mov *.avi *.webm)"
+            ";;All Files (*)",
         )
         if path:
             self.open_file(path)
 
-    def open_file(self, path):
+    def open_file(self, path: str | Path) -> None:
+        """Load and display the video at *path*."""
         path = Path(path)
         if not path.exists():
-            QMessageBox.warning(self, "Error", f"File not found:\n{path}")
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"File not found:\n{path}",
+            )
             return
 
         try:
             info = probe_video(path)
-        except Exception as exc:
-            QMessageBox.warning(self, "Error", f"Could not read video:\n{exc}")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"Could not read video:\n{exc}",
+            )
             return
 
         self.video_info = info
         self.video_info["path"] = path
 
-        self.crop_widget.set_source_size(info["width"], info["height"])
+        self.crop_widget.set_source_size(
+            info["width"],
+            info["height"],
+        )
         self.crop_widget.init_crops()
         self._restore_crops()
         self.preview.source_w = info["width"]
@@ -332,7 +410,7 @@ class MainWindow(QMainWindow):
 
     # ---- media player callbacks ----
 
-    def _on_frame(self, frame):
+    def _on_frame(self, frame: object) -> None:
         img = frame.toImage()
         if img.isNull():
             return
@@ -346,66 +424,88 @@ class MainWindow(QMainWindow):
             self._waiting_first_frame = False
             self.player.pause()
 
-    def _on_position(self, ms):
+    def _on_position(self, ms: int) -> None:
         sec = ms / 1000.0
         self.timeline.set_position(sec)
         if self.video_info:
             self.time_label.setText(
-                f"{self._fmt(sec)} / {self._fmt(self.video_info['duration'])}"
+                f"{self._fmt(sec)} / "
+                f"{self._fmt(self.video_info['duration'])}",
             )
             if sec >= self.timeline.trim_end:
                 self.player.pause()
-                self.player.setPosition(int(self.timeline.trim_start * 1000))
+                self.player.setPosition(
+                    int(self.timeline.trim_start * 1000),
+                )
                 self.play_btn.setText("Play")
 
     # ---- playback ----
 
-    def _toggle_play(self):
+    def _toggle_play(self) -> None:
         if not self.video_info:
             self._open_dialog()
             return
-        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+        if (
+            self.player.playbackState()
+            == QMediaPlayer.PlaybackState.PlayingState
+        ):
             self.player.pause()
             self.play_btn.setText("Play")
         else:
             pos_sec = self.player.position() / 1000.0
-            if pos_sec < self.timeline.trim_start or pos_sec >= self.timeline.trim_end:
-                self.player.setPosition(int(self.timeline.trim_start * 1000))
+            if (
+                pos_sec < self.timeline.trim_start
+                or pos_sec >= self.timeline.trim_end
+            ):
+                self.player.setPosition(
+                    int(self.timeline.trim_start * 1000),
+                )
             self.player.play()
             self.play_btn.setText("Pause")
 
     # ---- timeline ----
 
-    def _on_seek(self, sec):
+    def _on_seek(self, sec: float) -> None:
         self.player.setPosition(int(sec * 1000))
 
-    def _on_range_changed(self, start, end):
+    def _on_range_changed(self, start: float, end: float) -> None:
         self._update_info()
 
     # ---- crops & preview ----
 
-    def _on_crops_changed(self):
-        self.preview.set_crops(self.crop_widget.crops["top"], self.crop_widget.crops["bottom"])
+    def _on_crops_changed(self) -> None:
+        self.preview.set_crops(
+            self.crop_widget.crops["top"],
+            self.crop_widget.crops["bottom"],
+        )
 
-    def _on_split_changed(self, ratio):
+    def _on_split_changed(self, ratio: float) -> None:
         self.split_ratio = ratio
         pct = int(ratio * 100)
-        self.split_label.setText(f"Split: {pct}% / {100 - pct}% — Drag the red bar to adjust")
+        self.split_label.setText(
+            f"Split: {pct}% / {100 - pct}%"
+            " — Drag the red bar to adjust",
+        )
         self._update_crop_aspects()
 
-    def _update_crop_aspects(self):
+    def _update_crop_aspects(self) -> None:
         if not self.video_info:
             return
-        info = PLATFORM_INFO[self.selected_platform][self.selected_quality]
+        info = PLATFORM_INFO[self.selected_platform][
+            self.selected_quality
+        ]
         out_w, out_h = (int(x) for x in info["res"].split("x"))
         top_h = out_h * self.split_ratio
         bot_h = out_h * (1 - self.split_ratio)
-        self.crop_widget.set_crop_aspects(out_w / top_h, out_w / bot_h)
+        self.crop_widget.set_crop_aspects(
+            out_w / top_h,
+            out_w / bot_h,
+        )
         self._on_crops_changed()
 
     # ---- platform / quality ----
 
-    def _on_platform_click(self, name):
+    def _on_platform_click(self, name: str) -> None:
         formats = PLATFORM_FORMATS[name]
         btn = self._platform_btns[name]
         if len(formats) == 1:
@@ -415,16 +515,29 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         for fmt in formats:
             if fmt["max_duration"] is not None:
-                dur_text = self._fmt_max_duration(fmt["max_duration"])
-                action = menu.addAction(f"{fmt['label']}  (max {dur_text})")
+                dur_text = self._fmt_max_duration(
+                    fmt["max_duration"],
+                )
+                action = menu.addAction(
+                    f"{fmt['label']}  (max {dur_text})",
+                )
             else:
-                action = menu.addAction(f"{fmt['label']}  (no time limit)")
+                action = menu.addAction(
+                    f"{fmt['label']}  (no time limit)",
+                )
             action.triggered.connect(
-                lambda _, n=name, f=fmt["key"]: self._select_platform(n, f)
+                lambda _, n=name, f=fmt["key"]: self._select_platform(
+                    n,
+                    f,
+                ),
             )
         menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
 
-    def _select_platform(self, name, format_key=None):
+    def _select_platform(
+        self,
+        name: str,
+        format_key: str | None = None,
+    ) -> None:
         self.selected_platform = name
         if format_key is None:
             format_key = PLATFORM_FORMATS[name][0]["key"]
@@ -434,79 +547,110 @@ class MainWindow(QMainWindow):
         self._update_crop_aspects()
         self._update_info()
 
-    def _get_format(self, platform, format_key):
+    def _get_format(
+        self,
+        platform: str,
+        format_key: str,
+    ) -> dict:
         for fmt in PLATFORM_FORMATS[platform]:
             if fmt["key"] == format_key:
                 return fmt
         return PLATFORM_FORMATS[platform][0]
 
     @staticmethod
-    def _fmt_max_duration(seconds):
+    def _fmt_max_duration(seconds: int) -> str:
         if seconds >= 3600:
             h = seconds // 3600
             m = (seconds % 3600) // 60
             return f"{h}h" if m == 0 else f"{h}h {m}m"
-        elif seconds >= 60:
+        if seconds >= 60:
             m = seconds // 60
             s = seconds % 60
             return f"{m} min" if s == 0 else f"{m}m {s}s"
         return f"{seconds}s"
 
-    def _select_quality(self, q):
+    def _select_quality(self, q: str) -> None:
         self.selected_quality = q
         for qq, btn in self._quality_btns.items():
             btn.setChecked(qq == q)
         self._update_crop_aspects()
         self._update_info()
 
-    def _update_info(self):
-        info = PLATFORM_INFO[self.selected_platform][self.selected_quality]
-        fmt = self._get_format(self.selected_platform, self.selected_format)
+    def _update_info(self) -> None:
+        info = PLATFORM_INFO[self.selected_platform][
+            self.selected_quality
+        ]
+        fmt = self._get_format(
+            self.selected_platform,
+            self.selected_format,
+        )
         fps_text = f"up to {info['maxFps']} fps"
         if self.video_info:
             src_fps = self.video_info["fps"]
             if src_fps <= info["maxFps"]:
                 fps_text = f"{src_fps} fps (original)"
             else:
-                fps_text = f"{info['maxFps']} fps (capped from {src_fps})"
+                fps_text = (
+                    f"{info['maxFps']} fps (capped from {src_fps})"
+                )
         text = (
-            f"{info['res']}  ·  {info['codec']}  ·  {fps_text}  ·  {info['audio']}\n"
-            f"{info['bitrate']}  ·  Max {info['maxSize']}  ·  {info['note']}"
+            f"{info['res']}  ·  {info['codec']}  ·  "
+            f"{fps_text}  ·  {info['audio']}\n"
+            f"{info['bitrate']}  ·  Max {info['maxSize']}"
+            f"  ·  {info['note']}"
         )
         if fmt["max_duration"] is not None:
             dur_text = self._fmt_max_duration(fmt["max_duration"])
             text += f"\nFormat: {fmt['label']} (max {dur_text})"
             if self.video_info:
-                trimmed_dur = self.timeline.trim_end - self.timeline.trim_start
+                trimmed_dur = (
+                    self.timeline.trim_end - self.timeline.trim_start
+                )
                 if trimmed_dur > fmt["max_duration"]:
-                    num_parts = math.ceil(trimmed_dur / fmt["max_duration"])
-                    text += f"  ·  Will split into {num_parts} parts"
+                    num_parts = math.ceil(
+                        trimmed_dur / fmt["max_duration"],
+                    )
+                    text += (
+                        f"  ·  Will split into {num_parts} parts"
+                    )
         else:
             text += f"\nFormat: {fmt['label']} (no time limit)"
         self.info_label.setText(text)
 
     # ---- render ----
 
-    def _render(self):
+    def _render(self) -> None:
         if not self.video_info:
             return
         src = self.video_info["path"]
-        fmt = self._get_format(self.selected_platform, self.selected_format)
+        fmt = self._get_format(
+            self.selected_platform,
+            self.selected_format,
+        )
         max_duration = fmt["max_duration"]
 
-        default_name = f"{src.stem}_{self.selected_platform}_{self.selected_quality}.mp4"
+        default_name = (
+            f"{src.stem}_{self.selected_platform}"
+            f"_{self.selected_quality}.mp4"
+        )
         out_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Rendered Video",
+            self,
+            "Save Rendered Video",
             str(src.parent / default_name),
             "MP4 Files (*.mp4)",
         )
         if not out_path:
             return
 
-        self.render_btn.setEnabled(False)
-        self.stop_btn.setVisible(True)
-        self.status_label.setStyleSheet("background: #0f3460; color: #4ecdc4; padding: 8px 12px; border-radius: 6px;")
-        self.status_label.setText("Rendering... this may take a while")
+        self.render_btn.setEnabled(False)  # noqa: FBT003
+        self.stop_btn.setVisible(True)  # noqa: FBT003
+        self.status_label.setStyleSheet(
+            "background: #0f3460; color: #4ecdc4;"
+            " padding: 8px 12px; border-radius: 6px;",
+        )
+        self.status_label.setText(
+            "Rendering... this may take a while",
+        )
 
         self._render_thread = RenderThread(
             max_duration=max_duration,
@@ -521,24 +665,44 @@ class MainWindow(QMainWindow):
             quality=self.selected_quality,
             source_fps=self.video_info["fps"],
         )
-        self._render_thread.progress.connect(self._on_render_progress)
-        self._render_thread.finished.connect(lambda r: self._on_render_done(r, out_path))
+        self._render_thread.progress.connect(
+            self._on_render_progress,
+        )
+        self._render_thread.finished.connect(
+            lambda r: self._on_render_done(r, out_path),
+        )
         self._render_thread.start()
 
-    def _on_render_progress(self, current, total):
-        self.status_label.setText(f"Rendering part {current} of {total}...")
+    def _on_render_progress(
+        self,
+        current: int,
+        total: int,
+    ) -> None:
+        self.status_label.setText(
+            f"Rendering part {current} of {total}...",
+        )
 
-    def _on_render_done(self, result, out_path):
-        self.render_btn.setEnabled(True)
-        self.stop_btn.setVisible(False)
+    def _on_render_done(  # noqa: PLR0912
+        self,
+        result: dict | list[dict],
+        out_path: str,
+    ) -> None:
+        self.render_btn.setEnabled(True)  # noqa: FBT003
+        self.stop_btn.setVisible(False)  # noqa: FBT003
 
         cancelled = (
-            (isinstance(result, dict) and result.get("error") == "Cancelled")
-            or (isinstance(result, list) and any(r.get("error") == "Cancelled" for r in result))
+            isinstance(result, dict)
+            and result.get("error") == "Cancelled"
+        ) or (
+            isinstance(result, list)
+            and any(
+                r.get("error") == "Cancelled" for r in result
+            )
         )
         if cancelled:
             self.status_label.setStyleSheet(
-                "background: #3a3a1e; color: #e0c040; padding: 8px 12px; border-radius: 6px;"
+                "background: #3a3a1e; color: #e0c040;"
+                " padding: 8px 12px; border-radius: 6px;",
             )
             self.status_label.setText("Render stopped.")
             return
@@ -546,35 +710,52 @@ class MainWindow(QMainWindow):
         if isinstance(result, list):
             errors = [r for r in result if "error" in r]
             if errors:
-                self.status_label.setStyleSheet("background: #4a1a1a; color: #e94560; padding: 8px 12px; border-radius: 6px;")
+                self.status_label.setStyleSheet(_STYLE_ERROR)
                 self.status_label.setText(
-                    f"Error in part {errors[0]['part']}: {errors[0]['error'][:300]}"
+                    f"Error in part {errors[0]['part']}: "
+                    f"{errors[0]['error'][:300]}",
                 )
             else:
-                total_size = round(sum(r["size_mb"] for r in result), 2)
-                self.status_label.setStyleSheet("background: #1a4a2e; color: #4ecdc4; padding: 8px 12px; border-radius: 6px;")
+                total_size = round(
+                    sum(r["size_mb"] for r in result),
+                    2,
+                )
+                self.status_label.setStyleSheet(_STYLE_SUCCESS)
                 encoder = result[0].get("encoder", "libx264")
                 self.status_label.setText(
-                    f"Done! {len(result)} parts  ·  {result[0]['resolution']}  ·  "
-                    f"{result[0]['fps']} fps  ·  Total {total_size} MB  ·  {encoder}"
+                    f"Done! {len(result)} parts  ·  "
+                    f"{result[0]['resolution']}  ·  "
+                    f"{result[0]['fps']} fps  ·  "
+                    f"Total {total_size} MB  ·  {encoder}",
                 )
         elif "error" in result:
-            self.status_label.setStyleSheet("background: #4a1a1a; color: #e94560; padding: 8px 12px; border-radius: 6px;")
-            self.status_label.setText(f"Error: {result['error'][:300]}")
+            self.status_label.setStyleSheet(_STYLE_ERROR)
+            self.status_label.setText(
+                f"Error: {result['error'][:300]}",
+            )
         else:
-            self.status_label.setStyleSheet("background: #1a4a2e; color: #4ecdc4; padding: 8px 12px; border-radius: 6px;")
+            self.status_label.setStyleSheet(_STYLE_SUCCESS)
             encoder = result.get("encoder", "libx264")
             self.status_label.setText(
-                f"Done! {result['resolution']}  ·  {result['fps']} fps  ·  "
-                f"{result['size_mb']} MB  ·  {encoder}  →  {out_path}"
+                f"Done! {result['resolution']}  ·  "
+                f"{result['fps']} fps  ·  "
+                f"{result['size_mb']} MB  ·  "
+                f"{encoder}  ->  {out_path}",
             )
 
-    def _stop_render(self):
-        if self._render_thread is not None and self._render_thread.isRunning():
+    def _stop_render(self) -> None:
+        if (
+            self._render_thread is not None
+            and self._render_thread.isRunning()
+        ):
             self._render_thread.stop()
 
-    def closeEvent(self, event):
-        if self._render_thread is not None and self._render_thread.isRunning():
+    def closeEvent(self, event) -> None:  # noqa: N802
+        """Shut down the render thread and save config on exit."""
+        if (
+            self._render_thread is not None
+            and self._render_thread.isRunning()
+        ):
             self._render_thread.finished.disconnect()
             self._render_thread.stop()
             self._render_thread.wait()
@@ -582,55 +763,94 @@ class MainWindow(QMainWindow):
         self._save_config()
         super().closeEvent(event)
 
-    def _save_config(self):
+    def _save_config(self) -> None:
         top = self.crop_widget.crops["top"]
         bot = self.crop_widget.crops["bottom"]
-        config.save({
-            "selected_platform": self.selected_platform,
-            "selected_format": self.selected_format,
-            "selected_quality": self.selected_quality,
-            "split_ratio": self.split_ratio,
-            "crops": {
-                "top": {"x": top.x, "y": top.y, "w": top.w, "h": top.h},
-                "bottom": {"x": bot.x, "y": bot.y, "w": bot.w, "h": bot.h},
+        config.save(
+            {
+                "selected_platform": self.selected_platform,
+                "selected_format": self.selected_format,
+                "selected_quality": self.selected_quality,
+                "split_ratio": self.split_ratio,
+                "crops": {
+                    "top": {
+                        "x": top.x,
+                        "y": top.y,
+                        "w": top.w,
+                        "h": top.h,
+                    },
+                    "bottom": {
+                        "x": bot.x,
+                        "y": bot.y,
+                        "w": bot.w,
+                        "h": bot.h,
+                    },
+                },
             },
-        })
+        )
 
-    def _restore_crops(self):
+    def _restore_crops(self) -> None:
         saved = self._cfg.get("crops", {})
         tc = saved.get("top", {})
         bc = saved.get("bottom", {})
         if tc.get("w", 0) > 0 and tc.get("h", 0) > 0:
-            self.crop_widget.crops["top"] = CropRect(tc["x"], tc["y"], tc["w"], tc["h"])
+            self.crop_widget.crops["top"] = CropRect(
+                tc["x"],
+                tc["y"],
+                tc["w"],
+                tc["h"],
+            )
         if bc.get("w", 0) > 0 and bc.get("h", 0) > 0:
-            self.crop_widget.crops["bottom"] = CropRect(bc["x"], bc["y"], bc["w"], bc["h"])
+            self.crop_widget.crops["bottom"] = CropRect(
+                bc["x"],
+                bc["y"],
+                bc["w"],
+                bc["h"],
+            )
 
     # ---- keyboard ----
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        """Handle Space (play/pause) and arrow-key seeking."""
         if event.key() == Qt.Key_Space:
             self._toggle_play()
         elif event.key() == Qt.Key_Left:
-            self.player.setPosition(max(0, self.player.position() - 5000))
+            self.player.setPosition(
+                max(0, self.player.position() - 5000),
+            )
         elif event.key() == Qt.Key_Right:
-            dur = int((self.video_info["duration"] if self.video_info else 0) * 1000)
-            self.player.setPosition(min(dur, self.player.position() + 5000))
+            dur = int(
+                (
+                    self.video_info["duration"]
+                    if self.video_info
+                    else 0
+                )
+                * 1000,
+            )
+            self.player.setPosition(
+                min(dur, self.player.position() + 5000),
+            )
         else:
             super().keyPressEvent(event)
 
     # ---- drag and drop ----
 
-    def dragEnterEvent(self, event):
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        """Show the drop overlay when a file is dragged in."""
         if event.mimeData().hasUrls():
-            self._drop_overlay.setGeometry(self.centralWidget().rect())
+            self._drop_overlay.setGeometry(
+                self.centralWidget().rect(),
+            )
             self._drop_overlay.show()
             self._drop_overlay.raise_()
             event.acceptProposedAction()
 
-    def dragLeaveEvent(self, event):
+    def dragLeaveEvent(self, event) -> None:  # noqa: N802
+        """Hide the drop overlay when the drag leaves."""
         self._drop_overlay.hide()
 
-    def dropEvent(self, event):
+    def dropEvent(self, event) -> None:  # noqa: N802
+        """Open the first dropped video file."""
         self._drop_overlay.hide()
         for url in event.mimeData().urls():
             path = url.toLocalFile()
@@ -641,15 +861,18 @@ class MainWindow(QMainWindow):
     # ---- helpers ----
 
     @staticmethod
-    def _fmt(s):
+    def _fmt(s: float) -> str:
         m = int(s // 60)
         sec = int(s % 60)
         return f"{m}:{sec:02d}"
 
 
-def run(file_path=None):
+def run(file_path: str | None = None) -> None:
+    """Launch the Trimmy application."""
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
-        print("Error: ffmpeg and ffprobe must be installed and in PATH.")
+        logger.error(
+            "ffmpeg and ffprobe must be installed and in PATH.",
+        )
         sys.exit(1)
 
     app = QApplication(sys.argv)

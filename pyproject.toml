@@ -16,6 +16,48 @@ trimmy = "trimmy.__main__:main"
 dev = [
     "commitizen>=4.16",
     "prek>=0.4",
+    "ruff>=0.15",
+]
+
+[tool.ruff.lint]
+select = [
+  "F",
+  "E",
+  "I",
+  "N",
+  "D",
+  "UP",
+  "B",
+  "S",
+  "C4",
+  "SIM",
+  "ASYNC",
+  "FBT",
+  "ERA",
+  "T20",
+  "RET",
+  "PTH",
+  "FLY",
+  "PERF",
+  "FURB",
+  "TRY",
+  "FAST",
+  "LOG",
+  "G",
+  "INP",
+  "PIE",
+  "TD",
+  "PD",
+]
+ignore = ["D107", "D203", "D212", "D415", "B008"]
+
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "S101",
+  "S105",
+  "S106",
+  "D",
 ]
 
 [tool.commitizen]
