@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
 
 from PySide6.QtGui import QImage, QPainter, QFont, QColor, QPen
 
+from trimmy import config
+
 from trimmy.presets import PLATFORM_PRESETS, PLATFORM_INFO, PLATFORM_FORMATS
 from trimmy.renderer import probe_video, render_video, CropRect, RenderContext
 from trimmy.widgets import CropWidget, PreviewWidget, TimelineWidget
@@ -141,10 +143,11 @@ class MainWindow(QMainWindow):
 
         self.video_info = None
         self.current_frame = None
-        self.selected_platform = "instagram"
-        self.selected_format = PLATFORM_FORMATS["instagram"][0]["key"]
-        self.selected_quality = "max"
-        self.split_ratio = 0.5
+        self._cfg = config.load()
+        self.selected_platform = self._cfg["selected_platform"]
+        self.selected_format = self._cfg["selected_format"]
+        self.selected_quality = self._cfg["selected_quality"]
+        self.split_ratio = self._cfg["split_ratio"]
         self._waiting_first_frame = False
         self._render_thread = None
 
@@ -259,8 +262,10 @@ class MainWindow(QMainWindow):
         right.setSpacing(10)
         right.addWidget(self._section_label("Preview (9:16)"))
         self.preview = PreviewWidget()
+        self.preview.split_ratio = self.split_ratio
         right.addWidget(self.preview, alignment=Qt.AlignHCenter)
-        self.split_label = QLabel("Split: 50% / 50% — Drag the red bar to adjust")
+        pct = int(self.split_ratio * 100)
+        self.split_label = QLabel(f"Split: {pct}% / {100 - pct}% — Drag the red bar to adjust")
         self.split_label.setAlignment(Qt.AlignCenter)
         self.split_label.setStyleSheet("color: #888; font-size: 12px;")
         right.addWidget(self.split_label)
@@ -312,6 +317,7 @@ class MainWindow(QMainWindow):
 
         self.crop_widget.set_source_size(info["width"], info["height"])
         self.crop_widget.init_crops()
+        self._restore_crops()
         self.preview.source_w = info["width"]
         self.preview.source_h = info["height"]
         self.timeline.set_duration(info["duration"])
@@ -573,7 +579,31 @@ class MainWindow(QMainWindow):
             self._render_thread.stop()
             self._render_thread.wait()
         self.player.stop()
+        self._save_config()
         super().closeEvent(event)
+
+    def _save_config(self):
+        top = self.crop_widget.crops["top"]
+        bot = self.crop_widget.crops["bottom"]
+        config.save({
+            "selected_platform": self.selected_platform,
+            "selected_format": self.selected_format,
+            "selected_quality": self.selected_quality,
+            "split_ratio": self.split_ratio,
+            "crops": {
+                "top": {"x": top.x, "y": top.y, "w": top.w, "h": top.h},
+                "bottom": {"x": bot.x, "y": bot.y, "w": bot.w, "h": bot.h},
+            },
+        })
+
+    def _restore_crops(self):
+        saved = self._cfg.get("crops", {})
+        tc = saved.get("top", {})
+        bc = saved.get("bottom", {})
+        if tc.get("w", 0) > 0 and tc.get("h", 0) > 0:
+            self.crop_widget.crops["top"] = CropRect(tc["x"], tc["y"], tc["w"], tc["h"])
+        if bc.get("w", 0) > 0 and bc.get("h", 0) > 0:
+            self.crop_widget.crops["bottom"] = CropRect(bc["x"], bc["y"], bc["w"], bc["h"])
 
     # ---- keyboard ----
 
