@@ -1,3 +1,5 @@
+"""Persistent configuration for Trimmy user preferences."""
+
 import json
 import os
 import sys
@@ -6,17 +8,24 @@ from pathlib import Path
 
 def _config_dir() -> Path:
     if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        base = Path(
+            os.environ.get(
+                "LOCALAPPDATA",
+                Path.home() / "AppData" / "Local",
+            ),
+        )
     elif sys.platform == "darwin":
         base = Path.home() / "Library" / "Application Support"
     else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        base = Path(
+            os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"),
+        )
     return base / "trimmy"
 
 
 CONFIG_PATH = _config_dir() / "config.json"
 
-_DEFAULTS = {
+_DEFAULTS: dict = {
     "selected_platform": "instagram",
     "selected_format": "feed",
     "selected_quality": "max",
@@ -29,17 +38,20 @@ _DEFAULTS = {
 
 
 def load() -> dict:
+    """Load config from disk, falling back to defaults."""
     if not CONFIG_PATH.exists():
         return dict(_DEFAULTS)
     try:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return dict(_DEFAULTS)
+    else:
         merged = dict(_DEFAULTS)
         merged.update(data)
         return merged
-    except (json.JSONDecodeError, OSError):
-        return dict(_DEFAULTS)
 
 
-def save(state: dict):
+def save(state: dict) -> None:
+    """Write config state to disk as JSON."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
