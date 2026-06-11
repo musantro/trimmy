@@ -126,7 +126,8 @@ def _cpu_codec_args(preset):
 
 
 def _build_render_cmd(src_path, out_path, trim_start, trim_end,
-                      filter_complex, codec_args, preset, maxrate, bufsize):
+                      filter_complex, codec_args, preset, maxrate, bufsize,
+                      *, gpu=False):
     cmd = [
         "ffmpeg", "-y",
         "-ss", str(trim_start), "-to", str(trim_end),
@@ -135,9 +136,10 @@ def _build_render_cmd(src_path, out_path, trim_start, trim_end,
         "-map", "[out]", "-map", "0:a?",
     ]
     cmd.extend(codec_args)
+    level = "auto" if gpu else preset["level"]
     cmd.extend([
         "-profile:v", preset["profile"],
-        "-level:v", preset["level"],
+        "-level:v", level,
         "-maxrate", maxrate,
         "-bufsize", bufsize,
         "-pix_fmt", "yuv420p",
@@ -229,7 +231,8 @@ def render_video(
     if gpu_enc:
         gpu_args = _gpu_codec_args(gpu_enc, preset)
         cmd = _build_render_cmd(src_path, out_path, trim_start, trim_end,
-                                filter_complex, gpu_args, preset, maxrate, bufsize)
+                                filter_complex, gpu_args, preset, maxrate, bufsize,
+                                gpu=True)
         proc = ctx.run(cmd)
         if proc is None:
             return {"error": "Cancelled"}
