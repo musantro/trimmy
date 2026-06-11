@@ -58,16 +58,17 @@ def _gpu_codec_args(encoder, preset):
         return [
             "-c:v", "h264_nvenc",
             "-preset", _NVENC_PRESET.get(cpu_preset, "p4"),
-            "-rc", "vbr",
             "-cq", str(crf),
+            "-b:v", "0",
         ]
     if encoder == "h264_amf":
         return [
             "-c:v", "h264_amf",
             "-quality", _AMF_QUALITY.get(cpu_preset, "balanced"),
-            "-rc", "vbr_latency",
+            "-rc", "cqp",
             "-qp_i", str(crf),
             "-qp_p", str(crf),
+            "-qp_b", str(crf),
         ]
     if encoder == "h264_qsv":
         return [
