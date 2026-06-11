@@ -15,7 +15,7 @@ trimmy = "trimmy.__main__:main"
 [dependency-groups]
 dev = [
     "commitizen>=4.16",
-    "pre-commit>=4",
+    "prek>=0.4",
 ]
 
 [tool.commitizen]
