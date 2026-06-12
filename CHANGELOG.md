@@ -1,3 +1,9 @@
+## v0.5.1 (2026-06-12)
+
+### Refactor
+
+- restructure codebase with domain-driven design
+
 ## v0.5.0 (2026-06-12)
 
 ### Feat
