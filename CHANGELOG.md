@@ -1,3 +1,9 @@
+## v0.5.0 (2026-06-12)
+
+### Feat
+
+- enable audio playback with volume control during preview
+
 ## v0.4.0 (2026-06-12)
 
 ### Feat
