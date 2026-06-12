@@ -104,6 +104,7 @@ _qt_widgets = _make_stub(
     "PySide6.QtWidgets",
     [
         "QApplication",
+        "QDialog",
         "QMainWindow",
         "QWidget",
         "QVBoxLayout",
