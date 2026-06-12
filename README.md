@@ -55,9 +55,9 @@ uv run python -m trimmy path/to/video.mp4
 
 | Key       | Action           |
 |-----------|------------------|
-| Space     | Play / Pause     |
-| Left      | Seek back 5s     |
-| Right     | Seek forward 5s  |
+| K         | Play / Pause     |
+| J         | Seek back 5s     |
+| L         | Seek forward 5s  |
 
 ## License
 
