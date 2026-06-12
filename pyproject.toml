@@ -3,7 +3,10 @@ name = "trimmy"
 version = "0.2.0"
 description = "Trimmy — vertical split crop video editor"
 requires-python = ">=3.11"
-dependencies = ["PySide6>=6.5"]
+dependencies = [
+    "PySide6>=6.5",
+    "typing_extensions>=4.0; python_version < '3.12'",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -17,6 +20,7 @@ dev = [
     "commitizen>=4.16",
     "prek>=0.4",
     "ruff>=0.15",
+    "ty>=0.0.48",
 ]
 
 [tool.ruff.lint]
@@ -59,6 +63,12 @@ ignore = ["D107", "D203", "D212", "D415", "B008"]
   "S106",
   "D",
 ]
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.rules]
+all = "error"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
