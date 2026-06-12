@@ -33,6 +33,7 @@ _DEFAULTS: dict[str, Any] = {
     "selected_format": "feed",
     "selected_quality": "max",
     "split_ratio": 0.5,
+    "volume": 50,
     "crops": {
         "top": {"x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0},
         "bottom": {"x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0},

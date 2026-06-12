@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -221,7 +222,8 @@ class MainWindow(QMainWindow):
 
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
-        self.audio.setMuted(True)  # noqa: FBT003
+        self._volume = self._cfg.get("volume", 50)
+        self.audio.setVolume(self._volume / 100.0)
         self.player.setAudioOutput(self.audio)
         self.sink = QVideoSink()
         self.player.setVideoSink(self.sink)
@@ -261,6 +263,37 @@ class MainWindow(QMainWindow):
         pb.addWidget(self.play_btn)
         pb.addWidget(self.time_label)
         pb.addStretch()
+
+        self.mute_btn = QPushButton("\U0001f50a")
+        self.mute_btn.setFixedWidth(36)
+        self.mute_btn.setStyleSheet("font-size: 16px; padding: 4px;")
+        self.mute_btn.clicked.connect(self._toggle_mute)
+        pb.addWidget(self.mute_btn)
+
+        self.volume_slider = QSlider(Qt.Horizontal)  # ty: ignore[unresolved-attribute]
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(self._volume)
+        self.volume_slider.setFixedWidth(100)
+        self.volume_slider.setStyleSheet(
+            "QSlider::groove:horizontal {"
+            "  background: #0f3460; height: 6px; border-radius: 3px;"
+            "}"
+            "QSlider::handle:horizontal {"
+            "  background: #e94560; width: 14px; margin: -4px 0;"
+            "  border-radius: 7px;"
+            "}"
+            "QSlider::sub-page:horizontal {"
+            "  background: #e94560; border-radius: 3px;"
+            "}"
+        )
+        self.volume_slider.valueChanged.connect(self._on_volume_changed)
+        pb.addWidget(self.volume_slider)
+
+        self.volume_label = QLabel(f"{self._volume}%")
+        self.volume_label.setFixedWidth(36)
+        self.volume_label.setStyleSheet("color: #888; font-size: 12px;")
+        pb.addWidget(self.volume_label)
+
         left.addLayout(pb)
 
         # platform row
@@ -471,6 +504,29 @@ class MainWindow(QMainWindow):
                 )
             self.player.play()
             self.play_btn.setText("Pause")
+
+    # ---- volume ----
+
+    def _on_volume_changed(self, value: int) -> None:
+        self._volume = value
+        self.audio.setVolume(value / 100.0)
+        self.volume_label.setText(f"{value}%")
+        if value == 0:
+            self.mute_btn.setText("\U0001f507")
+        else:
+            self.mute_btn.setText("\U0001f50a")
+
+    def _toggle_mute(self) -> None:
+        if self.audio.isMuted():
+            self.audio.setMuted(False)  # noqa: FBT003
+            self.mute_btn.setText(
+                "\U0001f507" if self._volume == 0 else "\U0001f50a",
+            )
+            self.volume_slider.setEnabled(True)  # noqa: FBT003
+        else:
+            self.audio.setMuted(True)  # noqa: FBT003
+            self.mute_btn.setText("\U0001f507")
+            self.volume_slider.setEnabled(False)  # noqa: FBT003
 
     # ---- timeline ----
 
@@ -761,6 +817,7 @@ class MainWindow(QMainWindow):
                 "selected_format": self.selected_format,
                 "selected_quality": self.selected_quality,
                 "split_ratio": self.split_ratio,
+                "volume": self._volume,
                 "crops": {
                     "top": {
                         "x": top.x,
@@ -819,6 +876,8 @@ class MainWindow(QMainWindow):
             self._set_trim_start_to_playhead()
         elif event.key() == Qt.Key_E:  # ty: ignore[unresolved-attribute]
             self._set_trim_end_to_playhead()
+        elif event.key() == Qt.Key_M:  # ty: ignore[unresolved-attribute]
+            self._toggle_mute()
         elif event.key() == Qt.Key_Question:  # ty: ignore[unresolved-attribute]
             self._show_keybindings_help()
         else:
@@ -851,7 +910,7 @@ class MainWindow(QMainWindow):
     def _show_keybindings_help(self) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle("Keyboard Shortcuts")
-        dialog.setFixedSize(360, 280)
+        dialog.setFixedSize(360, 310)
         dialog.setStyleSheet(
             "QDialog { background: #1a1a2e; }QLabel { color: #ffffff; }"
         )
@@ -874,6 +933,7 @@ class MainWindow(QMainWindow):
             ("L", "Seek forward 5s"),
             ("Q", "Set trim start to playhead"),
             ("E", "Set trim end to playhead"),
+            ("M", "Toggle mute"),
             ("?", "Show this help"),
         ]
         row_font = QFont()
