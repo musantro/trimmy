@@ -32,6 +32,7 @@ from PySide6.QtGui import (
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QVideoSink
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -800,7 +801,7 @@ class MainWindow(QMainWindow):
 
     @override
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
-        """Handle Space (play/pause) and arrow-key seeking."""
+        """Handle keyboard shortcuts for playback, trimming, and help."""
         if event.key() == Qt.Key_Space:  # ty: ignore[unresolved-attribute]
             self._toggle_play()
         elif event.key() == Qt.Key_Left:  # ty: ignore[unresolved-attribute]
@@ -814,8 +815,91 @@ class MainWindow(QMainWindow):
             self.player.setPosition(
                 min(dur, self.player.position() + 5000),
             )
+        elif event.key() == Qt.Key_Q:  # ty: ignore[unresolved-attribute]
+            self._set_trim_start_to_playhead()
+        elif event.key() == Qt.Key_E:  # ty: ignore[unresolved-attribute]
+            self._set_trim_end_to_playhead()
+        elif event.key() == Qt.Key_Question:  # ty: ignore[unresolved-attribute]
+            self._show_keybindings_help()
         else:
             super().keyPressEvent(event)
+
+    def _set_trim_start_to_playhead(self) -> None:
+        if not self.video_info:
+            return
+        pos = self.player.position() / 1000.0
+        if pos < self.timeline.trim_end - 0.1:
+            self.timeline.trim_start = pos
+            self.timeline.update()
+            self.timeline.range_changed.emit(
+                self.timeline.trim_start,
+                self.timeline.trim_end,
+            )
+
+    def _set_trim_end_to_playhead(self) -> None:
+        if not self.video_info:
+            return
+        pos = self.player.position() / 1000.0
+        if pos > self.timeline.trim_start + 0.1:
+            self.timeline.trim_end = pos
+            self.timeline.update()
+            self.timeline.range_changed.emit(
+                self.timeline.trim_start,
+                self.timeline.trim_end,
+            )
+
+    def _show_keybindings_help(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Keyboard Shortcuts")
+        dialog.setFixedSize(360, 280)
+        dialog.setStyleSheet(
+            "QDialog { background: #1a1a2e; }QLabel { color: #ffffff; }"
+        )
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(6)
+        layout.setContentsMargins(24, 20, 24, 20)
+
+        title = QLabel("Keyboard Shortcuts")
+        title_font = QFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        title.setFont(title_font)
+        title.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]
+        layout.addWidget(title)
+        layout.addSpacing(8)
+
+        shortcuts = [
+            ("Space", "Play / Pause"),
+            ("←  Left", "Seek backward 5s"),
+            ("→  Right", "Seek forward 5s"),
+            ("Q", "Set trim start to playhead"),
+            ("E", "Set trim end to playhead"),
+            ("?", "Show this help"),
+        ]
+        row_font = QFont()
+        row_font.setPointSize(10)
+        for key, desc in shortcuts:
+            row = QHBoxLayout()
+            key_label = QLabel(key)
+            key_label.setFont(row_font)
+            key_label.setFixedWidth(100)
+            key_label.setStyleSheet(
+                "color: #e94560; font-weight: bold;",
+            )
+            desc_label = QLabel(desc)
+            desc_label.setFont(row_font)
+            desc_label.setStyleSheet("color: #cccccc;")
+            row.addWidget(key_label)
+            row.addWidget(desc_label)
+            layout.addLayout(row)
+
+        layout.addSpacing(10)
+        hint = QLabel("Press Esc to close")
+        hint.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]
+        hint.setStyleSheet("color: #666666; font-size: 9pt;")
+        layout.addWidget(hint)
+
+        dialog.exec()
 
     # ---- drag and drop ----
 
