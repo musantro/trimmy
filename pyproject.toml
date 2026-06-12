@@ -93,4 +93,5 @@ all = "error"
 name = "cz_conventional_commits"
 version_provider = "pep621"
 tag_format = "v$version"
+bump_message = "bump: version $current_version → $new_version [skip ci]"
 update_changelog_on_bump = true
