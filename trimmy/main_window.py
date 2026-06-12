@@ -802,13 +802,13 @@ class MainWindow(QMainWindow):
     @override
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         """Handle keyboard shortcuts for playback, trimming, and help."""
-        if event.key() == Qt.Key_Space:  # ty: ignore[unresolved-attribute]
+        if event.key() == Qt.Key_K:  # ty: ignore[unresolved-attribute]
             self._toggle_play()
-        elif event.key() == Qt.Key_Left:  # ty: ignore[unresolved-attribute]
+        elif event.key() == Qt.Key_J:  # ty: ignore[unresolved-attribute]
             self.player.setPosition(
                 max(0, self.player.position() - 5000),
             )
-        elif event.key() == Qt.Key_Right:  # ty: ignore[unresolved-attribute]
+        elif event.key() == Qt.Key_L:  # ty: ignore[unresolved-attribute]
             dur = int(
                 (self.video_info["duration"] if self.video_info else 0) * 1000,
             )
@@ -869,9 +869,9 @@ class MainWindow(QMainWindow):
         layout.addSpacing(8)
 
         shortcuts = [
-            ("Space", "Play / Pause"),
-            ("←  Left", "Seek backward 5s"),
-            ("→  Right", "Seek forward 5s"),
+            ("K", "Play / Pause"),
+            ("J", "Seek backward 5s"),
+            ("L", "Seek forward 5s"),
             ("Q", "Set trim start to playhead"),
             ("E", "Set trim end to playhead"),
             ("?", "Show this help"),
