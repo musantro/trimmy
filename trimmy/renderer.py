@@ -121,7 +121,7 @@ def detect_gpu_encoder() -> str | None:
                 text=True,
                 timeout=15,
             )
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+        except (subprocess.TimeoutExpired, FileNotFoundError):  # noqa: PERF203
             continue
         else:
             if proc.returncode == 0:

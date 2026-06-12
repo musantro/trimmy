@@ -5,8 +5,16 @@ from trimmy.presets import PLATFORM_FORMATS, PLATFORM_INFO, PLATFORM_PRESETS
 ALL_PLATFORMS = list(PLATFORM_PRESETS.keys())
 QUALITIES = ["max", "optimized"]
 REQUIRED_PRESET_KEYS = {
-    "width", "height", "profile", "level", "preset", "crf",
-    "max_fps", "audio_bitrate", "max_size_mb", "movflags",
+    "width",
+    "height",
+    "profile",
+    "level",
+    "preset",
+    "crf",
+    "max_fps",
+    "audio_bitrate",
+    "max_size_mb",
+    "movflags",
 }
 REQUIRED_FORMAT_KEYS = {"key", "label", "max_duration"}
 
