@@ -480,9 +480,7 @@ class TimelineWidget(QWidget):
             Qt.AlignLeft,  # ty: ignore[unresolved-attribute]
             self._fmt(self.trim_start),
         )
-        dur_text = (
-            f"Duration: {self._fmt(self.trim_end - self.trim_start)}"
-        )
+        dur_text = f"Duration: {self._fmt(self.trim_end - self.trim_start)}"
         p.drawText(
             QRectF(bar.left(), y, bar.width(), 18),
             Qt.AlignCenter,  # ty: ignore[unresolved-attribute]

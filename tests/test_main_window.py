@@ -4,11 +4,11 @@ PySide6 is stubbed out by conftest.py so the module can be imported
 without a display server.  We only test static/class methods here.
 """
 
-
 from trimmy.main_window import MainWindow
 from trimmy.presets import PLATFORM_FORMATS
 
 # --- MainWindow._fmt ---
+
 
 def test_fmt_seconds_one_minute_five():
     assert MainWindow._fmt(65) == "1:05"
@@ -27,6 +27,7 @@ def test_fmt_seconds_large():
 
 
 # --- MainWindow._fmt_max_duration ---
+
 
 def test_fmt_max_duration_hours():
     assert MainWindow._fmt_max_duration(3600) == "1h"
@@ -49,6 +50,7 @@ def test_fmt_max_duration_minutes_and_seconds():
 
 
 # --- MainWindow._get_format ---
+
 
 def test_get_format_found():
     win = object.__new__(MainWindow)

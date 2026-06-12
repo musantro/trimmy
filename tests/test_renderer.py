@@ -129,9 +129,15 @@ def test_build_render_cmd_cpu():
     preset = make_preset()
     codec_args = ["-c:v", "libx264", "-preset", "slow", "-crf", "16"]
     cmd = _build_render_cmd(
-        Path("input.mp4"), Path("output.mp4"), 0.0, 10.0,
-        "[0:v]crop=100:100:0:0[out]", codec_args, preset,
-        "25000k", "50000k",
+        Path("input.mp4"),
+        Path("output.mp4"),
+        0.0,
+        10.0,
+        "[0:v]crop=100:100:0:0[out]",
+        codec_args,
+        preset,
+        "25000k",
+        "50000k",
     )
     assert cmd[0] == "ffmpeg"
     assert "-y" in cmd
@@ -144,9 +150,15 @@ def test_build_render_cmd_gpu():
     preset = make_preset()
     codec_args = ["-c:v", "h264_nvenc", "-preset", "p6"]
     cmd = _build_render_cmd(
-        Path("input.mp4"), Path("output.mp4"), 0.0, 10.0,
-        "[0:v]crop=100:100:0:0[out]", codec_args, preset,
-        "25000k", "50000k",
+        Path("input.mp4"),
+        Path("output.mp4"),
+        0.0,
+        10.0,
+        "[0:v]crop=100:100:0:0[out]",
+        codec_args,
+        preset,
+        "25000k",
+        "50000k",
         gpu=True,
     )
     idx = cmd.index("-level:v")
@@ -154,18 +166,20 @@ def test_build_render_cmd_gpu():
 
 
 def test_probe_video():
-    ffprobe_output = json.dumps({
-        "format": {"duration": "120.5"},
-        "streams": [
-            {
-                "codec_type": "video",
-                "width": 1920,
-                "height": 1080,
-                "r_frame_rate": "60/1",
-            },
-            {"codec_type": "audio"},
-        ],
-    })
+    ffprobe_output = json.dumps(
+        {
+            "format": {"duration": "120.5"},
+            "streams": [
+                {
+                    "codec_type": "video",
+                    "width": 1920,
+                    "height": 1080,
+                    "r_frame_rate": "60/1",
+                },
+                {"codec_type": "audio"},
+            ],
+        }
+    )
     fake_proc = MagicMock()
     fake_proc.stdout = ffprobe_output
     with patch("trimmy.renderer.subprocess.run", return_value=fake_proc):
@@ -404,13 +418,16 @@ def test_render_video_fps_capping():
     assert result["fps"] == 30
 
 
-@pytest.mark.parametrize("cpu_preset,expected_nvenc", [
-    ("slower", "p7"),
-    ("slow", "p6"),
-    ("medium", "p4"),
-    ("fast", "p2"),
-    ("veryfast", "p1"),
-])
+@pytest.mark.parametrize(
+    "cpu_preset,expected_nvenc",
+    [
+        ("slower", "p7"),
+        ("slow", "p6"),
+        ("medium", "p4"),
+        ("fast", "p2"),
+        ("veryfast", "p1"),
+    ],
+)
 def test_nvenc_preset_mapping(cpu_preset, expected_nvenc):
     preset = make_preset(preset=cpu_preset)
     args = _gpu_codec_args("h264_nvenc", preset)
@@ -419,13 +436,16 @@ def test_nvenc_preset_mapping(cpu_preset, expected_nvenc):
     assert args[idx + 1] == expected_nvenc
 
 
-@pytest.mark.parametrize("cpu_preset,expected_quality", [
-    ("slower", "quality"),
-    ("slow", "quality"),
-    ("medium", "balanced"),
-    ("fast", "speed"),
-    ("veryfast", "speed"),
-])
+@pytest.mark.parametrize(
+    "cpu_preset,expected_quality",
+    [
+        ("slower", "quality"),
+        ("slow", "quality"),
+        ("medium", "balanced"),
+        ("fast", "speed"),
+        ("veryfast", "speed"),
+    ],
+)
 def test_amf_quality_mapping(cpu_preset, expected_quality):
     preset = make_preset(preset=cpu_preset)
     args = _gpu_codec_args("h264_amf", preset)

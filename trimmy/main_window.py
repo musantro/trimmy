@@ -51,12 +51,10 @@ from trimmy.widgets import CropWidget, PreviewWidget, TimelineWidget
 logger = logging.getLogger(__name__)
 
 _STYLE_ERROR = (
-    "background: #4a1a1a; color: #e94560;"
-    " padding: 8px 12px; border-radius: 6px;"
+    "background: #4a1a1a; color: #e94560; padding: 8px 12px; border-radius: 6px;"
 )
 _STYLE_SUCCESS = (
-    "background: #1a4a2e; color: #4ecdc4;"
-    " padding: 8px 12px; border-radius: 6px;"
+    "background: #1a4a2e; color: #4ecdc4; padding: 8px 12px; border-radius: 6px;"
 )
 
 
@@ -161,10 +159,7 @@ class RenderThread(QThread):
         trim_end = self._kwargs["trim_end"]
         total_duration = trim_end - trim_start
 
-        if (
-            self._max_duration is None
-            or total_duration <= self._max_duration
-        ):
+        if self._max_duration is None or total_duration <= self._max_duration:
             result = render_video(**self._kwargs, ctx=self._ctx)
             self.finished.emit(result)
             return
@@ -183,9 +178,7 @@ class RenderThread(QThread):
                 trim_start + (i + 1) * self._max_duration,
                 trim_end,
             )
-            seg_path = (
-                out_path.parent / f"{out_path.stem}_part{i + 1}.mp4"
-            )
+            seg_path = out_path.parent / f"{out_path.stem}_part{i + 1}.mp4"
 
             seg_kwargs = dict(self._kwargs)
             seg_kwargs["trim_start"] = seg_start
@@ -346,8 +339,7 @@ class MainWindow(QMainWindow):
         right.addWidget(self.preview, alignment=Qt.AlignHCenter)  # ty: ignore[unresolved-attribute]
         pct = int(self.split_ratio * 100)
         self.split_label = QLabel(
-            f"Split: {pct}% / {100 - pct}%"
-            " — Drag the red bar to adjust",
+            f"Split: {pct}% / {100 - pct}% — Drag the red bar to adjust",
         )
         self.split_label.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]
         self.split_label.setStyleSheet(
@@ -384,8 +376,7 @@ class MainWindow(QMainWindow):
             self,
             "Open Video",
             "",
-            "Video Files (*.mp4 *.mkv *.mov *.avi *.webm)"
-            ";;All Files (*)",
+            "Video Files (*.mp4 *.mkv *.mov *.avi *.webm);;All Files (*)",
         )
         if path:
             self.open_file(path)
@@ -453,8 +444,7 @@ class MainWindow(QMainWindow):
         self.timeline.set_position(sec)
         if self.video_info:
             self.time_label.setText(
-                f"{self._fmt(sec)} / "
-                f"{self._fmt(self.video_info['duration'])}",
+                f"{self._fmt(sec)} / {self._fmt(self.video_info['duration'])}",
             )
             if sec >= self.timeline.trim_end:
                 self.player.pause()
@@ -469,18 +459,12 @@ class MainWindow(QMainWindow):
         if not self.video_info:
             self._open_dialog()
             return
-        if (
-            self.player.playbackState()
-            == QMediaPlayer.PlaybackState.PlayingState
-        ):
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
             self.play_btn.setText("Play")
         else:
             pos_sec = self.player.position() / 1000.0
-            if (
-                pos_sec < self.timeline.trim_start
-                or pos_sec >= self.timeline.trim_end
-            ):
+            if pos_sec < self.timeline.trim_start or pos_sec >= self.timeline.trim_end:
                 self.player.setPosition(
                     int(self.timeline.trim_start * 1000),
                 )
@@ -507,17 +491,14 @@ class MainWindow(QMainWindow):
         self.split_ratio = ratio
         pct = int(ratio * 100)
         self.split_label.setText(
-            f"Split: {pct}% / {100 - pct}%"
-            " — Drag the red bar to adjust",
+            f"Split: {pct}% / {100 - pct}% — Drag the red bar to adjust",
         )
         self._update_crop_aspects()
 
     def _update_crop_aspects(self) -> None:
         if not self.video_info:
             return
-        info = PLATFORM_INFO[self.selected_platform][
-            self.selected_quality
-        ]
+        info = PLATFORM_INFO[self.selected_platform][self.selected_quality]
         res: str = info["res"]
         out_w, out_h = (int(x) for x in res.split("x"))
         top_h = out_h * self.split_ratio
@@ -602,9 +583,7 @@ class MainWindow(QMainWindow):
         self._update_info()
 
     def _update_info(self) -> None:
-        info = PLATFORM_INFO[self.selected_platform][
-            self.selected_quality
-        ]
+        info = PLATFORM_INFO[self.selected_platform][self.selected_quality]
         fmt = self._get_format(
             self.selected_platform,
             self.selected_format,
@@ -615,9 +594,7 @@ class MainWindow(QMainWindow):
             if src_fps <= info["maxFps"]:
                 fps_text = f"{src_fps} fps (original)"
             else:
-                fps_text = (
-                    f"{info['maxFps']} fps (capped from {src_fps})"
-                )
+                fps_text = f"{info['maxFps']} fps (capped from {src_fps})"
         text = (
             f"{info['res']}  ·  {info['codec']}  ·  "
             f"{fps_text}  ·  {info['audio']}\n"
@@ -628,16 +605,12 @@ class MainWindow(QMainWindow):
             dur_text = self._fmt_max_duration(fmt["max_duration"])
             text += f"\nFormat: {fmt['label']} (max {dur_text})"
             if self.video_info:
-                trimmed_dur = (
-                    self.timeline.trim_end - self.timeline.trim_start
-                )
+                trimmed_dur = self.timeline.trim_end - self.timeline.trim_start
                 if trimmed_dur > fmt["max_duration"]:
                     num_parts = math.ceil(
                         trimmed_dur / fmt["max_duration"],
                     )
-                    text += (
-                        f"  ·  Will split into {num_parts} parts"
-                    )
+                    text += f"  ·  Will split into {num_parts} parts"
         else:
             text += f"\nFormat: {fmt['label']} (no time limit)"
         self.info_label.setText(text)
@@ -655,8 +628,7 @@ class MainWindow(QMainWindow):
         max_duration = fmt["max_duration"]
 
         default_name = (
-            f"{src.stem}_{self.selected_platform}"
-            f"_{self.selected_quality}.mp4"
+            f"{src.stem}_{self.selected_platform}_{self.selected_quality}.mp4"
         )
         out_path, _ = QFileDialog.getSaveFileName(
             self,
@@ -716,13 +688,10 @@ class MainWindow(QMainWindow):
         self.stop_btn.setVisible(False)  # noqa: FBT003
 
         cancelled = (
-            isinstance(result, dict)
-            and result.get("error") == "Cancelled"
+            isinstance(result, dict) and result.get("error") == "Cancelled"
         ) or (
             isinstance(result, list)
-            and any(
-                r.get("error") == "Cancelled" for r in result
-            )
+            and any(r.get("error") == "Cancelled" for r in result)
         )
         if cancelled:
             self.status_label.setStyleSheet(
@@ -737,8 +706,7 @@ class MainWindow(QMainWindow):
             if errors:
                 self.status_label.setStyleSheet(_STYLE_ERROR)
                 self.status_label.setText(
-                    f"Error in part {errors[0]['part']}: "
-                    f"{errors[0]['error'][:300]}",
+                    f"Error in part {errors[0]['part']}: {errors[0]['error'][:300]}",
                 )
             else:
                 total_size = round(
@@ -769,19 +737,13 @@ class MainWindow(QMainWindow):
             )
 
     def _stop_render(self) -> None:
-        if (
-            self._render_thread is not None
-            and self._render_thread.isRunning()
-        ):
+        if self._render_thread is not None and self._render_thread.isRunning():
             self._render_thread.stop()
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Shut down the render thread and save config on exit."""
-        if (
-            self._render_thread is not None
-            and self._render_thread.isRunning()
-        ):
+        if self._render_thread is not None and self._render_thread.isRunning():
             self._render_thread.finished.disconnect()
             self._render_thread.stop()
             self._render_thread.wait()
@@ -847,12 +809,7 @@ class MainWindow(QMainWindow):
             )
         elif event.key() == Qt.Key_Right:  # ty: ignore[unresolved-attribute]
             dur = int(
-                (
-                    self.video_info["duration"]
-                    if self.video_info
-                    else 0
-                )
-                * 1000,
+                (self.video_info["duration"] if self.video_info else 0) * 1000,
             )
             self.player.setPosition(
                 min(dur, self.player.position() + 5000),
