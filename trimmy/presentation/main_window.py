@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import logging
-import math
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -29,7 +27,12 @@ from PySide6.QtGui import (
     QPen,
     QResizeEvent,
 )
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QVideoSink
+from PySide6.QtMultimedia import (
+    QAudioOutput,
+    QMediaPlayer,
+    QVideoFrame,
+    QVideoSink,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -45,10 +48,47 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from trimmy import config
-from trimmy.presets import PLATFORM_FORMATS, PLATFORM_INFO
-from trimmy.renderer import CropRect, RenderContext, probe_video, render_video
-from trimmy.widgets import CropWidget, PreviewWidget, TimelineWidget
+from trimmy.crop.domain.models import CropSelection
+from trimmy.crop.domain.services import AspectRatioCalculator
+from trimmy.preferences.application.use_cases import (
+    LoadPreferencesUseCase,
+    SavePreferencesUseCase,
+)
+from trimmy.preferences.domain.models import Preferences
+from trimmy.preferences.infrastructure.json_repository import (
+    JsonPreferencesRepository,
+)
+from trimmy.presentation.widgets import (
+    CropWidget,
+    PreviewWidget,
+    TimelineWidget,
+)
+from trimmy.render.application.use_cases import (
+    ProbeVideoRequest,
+    ProbeVideoUseCase,
+    RenderJobRequest,
+    RenderSegmentsUseCase,
+)
+from trimmy.render.domain.models import (
+    PlatformFormat,
+    RenderJobResult,
+    RenderSpec,
+    VideoMetadata,
+)
+from trimmy.render.domain.services import FormatSelector
+from trimmy.render.infrastructure.ffmpeg import (
+    FFmpegRenderingBackend,
+    FFprobeVideoProber,
+)
+from trimmy.render.infrastructure.presets import InMemoryPresetRepository
+from trimmy.trim.application.use_cases import (
+    PlanSegmentsRequest,
+    PlanSegmentsUseCase,
+    SetTrimEndRequest,
+    SetTrimEndUseCase,
+    SetTrimStartRequest,
+    SetTrimStartUseCase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,67 +176,40 @@ QMenu::item:selected { background: #1a4a80; }
 
 
 class RenderThread(QThread):
-    """Background thread that runs one or more render passes."""
+    """Background thread that runs the render job use case."""
 
     finished = Signal(object)
     progress = Signal(int, int)
 
     def __init__(
         self,
-        max_duration: int | None = None,
-        **kwargs: Any,
+        use_case: RenderSegmentsUseCase,
+        backend: FFmpegRenderingBackend,
+        spec: RenderSpec,
+        max_duration: int | None,
     ) -> None:
         super().__init__()
-        self._kwargs = kwargs
+        self._use_case = use_case
+        self._backend = backend
+        self._spec = spec
         self._max_duration = max_duration
-        self._ctx = RenderContext()
 
     def stop(self) -> None:
         """Request cancellation of the running render."""
-        self._ctx.cancel()
+        self._backend.cancel()
+
+    def _emit_progress(self, current: int, total: int) -> None:
+        self.progress.emit(current, total)
 
     @override
     def run(self) -> None:  # noqa: D102
-        trim_start = self._kwargs["trim_start"]
-        trim_end = self._kwargs["trim_end"]
-        total_duration = trim_end - trim_start
-
-        if self._max_duration is None or total_duration <= self._max_duration:
-            result = render_video(**self._kwargs, ctx=self._ctx)
-            self.finished.emit(result)
-            return
-
-        num_parts = math.ceil(total_duration / self._max_duration)
-        out_path = self._kwargs["out_path"]
-        results: list[dict[str, Any]] = []
-
-        for i in range(num_parts):
-            if self._ctx.cancelled:
-                results.append({"error": "Cancelled"})
-                break
-            self.progress.emit(i + 1, num_parts)
-            seg_start = trim_start + i * self._max_duration
-            seg_end = min(
-                trim_start + (i + 1) * self._max_duration,
-                trim_end,
-            )
-            seg_path = out_path.parent / f"{out_path.stem}_part{i + 1}.mp4"
-
-            seg_kwargs = dict(self._kwargs)
-            seg_kwargs["trim_start"] = seg_start
-            seg_kwargs["trim_end"] = seg_end
-            seg_kwargs["out_path"] = seg_path
-
-            result = render_video(**seg_kwargs, ctx=self._ctx)
-            result["part"] = i + 1
-            result["total_parts"] = num_parts
-            result["path"] = str(seg_path)
-            results.append(result)
-
-            if "error" in result:
-                break
-
-        self.finished.emit(results)
+        request = RenderJobRequest(
+            spec=self._spec,
+            max_duration=self._max_duration,
+            on_progress=self._emit_progress,
+        )
+        result = self._use_case.execute(request)
+        self.finished.emit(result)
 
 
 class MainWindow(QMainWindow):
@@ -210,19 +223,28 @@ class MainWindow(QMainWindow):
 
         self.setAcceptDrops(True)  # noqa: FBT003
 
-        self.video_info: dict[str, Any] | None = None
+        self._presets = InMemoryPresetRepository()
+        self._format_selector = FormatSelector()
+        self._aspect_calculator = AspectRatioCalculator()
+        self._probe = ProbeVideoUseCase(FFprobeVideoProber())
+        self._plan_segments = PlanSegmentsUseCase()
+        self._prefs_repository = JsonPreferencesRepository()
+
+        self.video_info: VideoMetadata | None = None
+        self._source_path: Path | None = None
         self.current_frame: QImage | None = None
-        self._cfg = config.load()
-        self.selected_platform: str = self._cfg["selected_platform"]
-        self.selected_format: str = self._cfg["selected_format"]
-        self.selected_quality: str = self._cfg["selected_quality"]
-        self.split_ratio: float = self._cfg["split_ratio"]
+
+        self._prefs = LoadPreferencesUseCase(self._prefs_repository).execute()
+        self.selected_platform: str = self._prefs.selected_platform
+        self.selected_format: str = self._prefs.selected_format
+        self.selected_quality: str = self._prefs.selected_quality
+        self.split_ratio: float = self._prefs.split_ratio
         self._waiting_first_frame: bool = False
         self._render_thread: RenderThread | None = None
 
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
-        self._volume = self._cfg.get("volume", 50)
+        self._volume = self._prefs.volume
         self.audio.setVolume(self._volume / 100.0)
         self.player.setAudioOutput(self.audio)
         self.sink = QVideoSink()
@@ -427,7 +449,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            info = probe_video(path)
+            info = self._probe.execute(ProbeVideoRequest(path))
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(
                 self,
@@ -437,17 +459,12 @@ class MainWindow(QMainWindow):
             return
 
         self.video_info = info
-        self.video_info["path"] = path
+        self._source_path = path
 
-        self.crop_widget.set_source_size(
-            info["width"],
-            info["height"],
-        )
+        self.crop_widget.set_source_size(info.width, info.height)
         self.crop_widget.init_crops()
         self._restore_crops()
-        self.preview.source_w = info["width"]
-        self.preview.source_h = info["height"]
-        self.timeline.set_duration(info["duration"])
+        self.timeline.set_duration(info.duration)
         self._update_crop_aspects()
 
         self._waiting_first_frame = True
@@ -459,7 +476,7 @@ class MainWindow(QMainWindow):
 
     # ---- media player callbacks ----
 
-    def _on_frame(self, frame: Any) -> None:
+    def _on_frame(self, frame: QVideoFrame) -> None:
         img = frame.toImage()
         if img.isNull():
             return
@@ -478,7 +495,7 @@ class MainWindow(QMainWindow):
         self.timeline.set_position(sec)
         if self.video_info:
             self.time_label.setText(
-                f"{self._fmt(sec)} / {self._fmt(self.video_info['duration'])}",
+                f"{self._fmt(sec)} / {self._fmt(self.video_info.duration)}",
             )
             if sec >= self.timeline.trim_end:
                 self.player.pause()
@@ -539,10 +556,7 @@ class MainWindow(QMainWindow):
     # ---- crops & preview ----
 
     def _on_crops_changed(self) -> None:
-        self.preview.set_crops(
-            self.crop_widget.crops["top"],
-            self.crop_widget.crops["bottom"],
-        )
+        self.preview.set_selection(self.crop_widget.selection)
 
     def _on_split_changed(self, ratio: float) -> None:
         self.split_ratio = ratio
@@ -555,44 +569,41 @@ class MainWindow(QMainWindow):
     def _update_crop_aspects(self) -> None:
         if not self.video_info:
             return
-        info = PLATFORM_INFO[self.selected_platform][self.selected_quality]
-        res: str = info["res"]
-        out_w, out_h = (int(x) for x in res.split("x"))
-        top_h = out_h * self.split_ratio
-        bot_h = out_h * (1 - self.split_ratio)
-        self.crop_widget.set_crop_aspects(
-            out_w / top_h,
-            out_w / bot_h,
+        info = self._presets.display_info(
+            self.selected_platform,
+            self.selected_quality,
         )
+        out_w, out_h = (int(x) for x in info.res.split("x"))
+        aspects = self._aspect_calculator.calculate(
+            out_w,
+            out_h,
+            self.split_ratio,
+        )
+        self.crop_widget.set_crop_aspects(aspects.top, aspects.bottom)
         self._on_crops_changed()
 
     # ---- platform / quality ----
 
     def _on_platform_click(self, name: str) -> None:
-        formats = PLATFORM_FORMATS[name]
+        formats = self._presets.formats(name)
         btn = self._platform_btns[name]
         if len(formats) == 1:
-            self._select_platform(name, formats[0]["key"])
+            self._select_platform(name, formats[0].key)
             return
         btn.setChecked(name == self.selected_platform)
         menu = QMenu(self)
         for fmt in formats:
-            if fmt["max_duration"] is not None:
-                dur_text = self._fmt_max_duration(
-                    fmt["max_duration"],
-                )
+            if fmt.max_duration is not None:
+                dur_text = self._fmt_max_duration(fmt.max_duration)
                 action = menu.addAction(
-                    f"{fmt['label']}  (max {dur_text})",
+                    f"{fmt.label}  (max {dur_text})",
                 )
             else:
                 action = menu.addAction(
-                    f"{fmt['label']}  (no time limit)",
+                    f"{fmt.label}  (no time limit)",
                 )
             action.triggered.connect(
-                lambda _, n=name, f=fmt["key"]: self._select_platform(
-                    n,
-                    f,
-                ),
+                lambda _, n=name, f=fmt.key: self._select_platform(n, f),
             )
         menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))  # ty: ignore[invalid-argument-type]
 
@@ -603,22 +614,18 @@ class MainWindow(QMainWindow):
     ) -> None:
         self.selected_platform = name
         if format_key is None:
-            format_key = PLATFORM_FORMATS[name][0]["key"]
+            format_key = self._presets.formats(name)[0].key
         self.selected_format = format_key
         for n, btn in self._platform_btns.items():
             btn.setChecked(n == name)
         self._update_crop_aspects()
         self._update_info()
 
-    def _get_format(
-        self,
-        platform: str,
-        format_key: str,
-    ) -> dict[str, Any]:
-        for fmt in PLATFORM_FORMATS[platform]:
-            if fmt["key"] == format_key:
-                return fmt
-        return PLATFORM_FORMATS[platform][0]
+    def _get_format(self, platform: str, format_key: str) -> PlatformFormat:
+        return self._format_selector.select(
+            self._presets.formats(platform),
+            format_key,
+        )
 
     @staticmethod
     def _fmt_max_duration(seconds: int) -> str:
@@ -640,49 +647,48 @@ class MainWindow(QMainWindow):
         self._update_info()
 
     def _update_info(self) -> None:
-        info = PLATFORM_INFO[self.selected_platform][self.selected_quality]
-        fmt = self._get_format(
+        info = self._presets.display_info(
             self.selected_platform,
-            self.selected_format,
+            self.selected_quality,
         )
-        fps_text = f"up to {info['maxFps']} fps"
+        fmt = self._get_format(self.selected_platform, self.selected_format)
+        fps_text = f"up to {info.max_fps} fps"
         if self.video_info:
-            src_fps = self.video_info["fps"]
-            if src_fps <= info["maxFps"]:
+            src_fps = self.video_info.fps
+            if src_fps <= info.max_fps:
                 fps_text = f"{src_fps} fps (original)"
             else:
-                fps_text = f"{info['maxFps']} fps (capped from {src_fps})"
+                fps_text = f"{info.max_fps} fps (capped from {src_fps})"
         text = (
-            f"{info['res']}  ·  {info['codec']}  ·  "
-            f"{fps_text}  ·  {info['audio']}\n"
-            f"{info['bitrate']}  ·  Max {info['maxSize']}"
-            f"  ·  {info['note']}"
+            f"{info.res}  ·  {info.codec}  ·  "
+            f"{fps_text}  ·  {info.audio}\n"
+            f"{info.bitrate}  ·  Max {info.max_size}"
+            f"  ·  {info.note}"
         )
-        if fmt["max_duration"] is not None:
-            dur_text = self._fmt_max_duration(fmt["max_duration"])
-            text += f"\nFormat: {fmt['label']} (max {dur_text})"
+        if fmt.max_duration is not None:
+            dur_text = self._fmt_max_duration(fmt.max_duration)
+            text += f"\nFormat: {fmt.label} (max {dur_text})"
             if self.video_info:
-                trimmed_dur = self.timeline.trim_end - self.timeline.trim_start
-                if trimmed_dur > fmt["max_duration"]:
-                    num_parts = math.ceil(
-                        trimmed_dur / fmt["max_duration"],
-                    )
-                    text += f"  ·  Will split into {num_parts} parts"
+                segments = self._plan_segments.execute(
+                    PlanSegmentsRequest(
+                        self.timeline.trim_range,
+                        fmt.max_duration,
+                    ),
+                )
+                if len(segments) > 1:
+                    text += f"  ·  Will split into {len(segments)} parts"
         else:
-            text += f"\nFormat: {fmt['label']} (no time limit)"
+            text += f"\nFormat: {fmt.label} (no time limit)"
         self.info_label.setText(text)
 
     # ---- render ----
 
     def _render(self) -> None:
-        if not self.video_info:
+        if not self.video_info or self._source_path is None:
             return
-        src = self.video_info["path"]
-        fmt = self._get_format(
-            self.selected_platform,
-            self.selected_format,
-        )
-        max_duration = fmt["max_duration"]
+        src = self._source_path
+        fmt = self._get_format(self.selected_platform, self.selected_format)
+        max_duration = fmt.max_duration
 
         default_name = (
             f"{src.stem}_{self.selected_platform}_{self.selected_quality}.mp4"
@@ -706,18 +712,23 @@ class MainWindow(QMainWindow):
             "Rendering... this may take a while",
         )
 
-        self._render_thread = RenderThread(
-            max_duration=max_duration,
-            src_path=src,
-            out_path=Path(out_path),
-            trim_start=self.timeline.trim_start,
-            trim_end=self.timeline.trim_end,
-            top_crop=self.crop_widget.crops["top"],
-            bottom_crop=self.crop_widget.crops["bottom"],
+        spec = RenderSpec(
+            source_path=src,
+            output_path=Path(out_path),
+            trim=self.timeline.trim_range,
+            crops=self.crop_widget.selection,
             split_ratio=self.split_ratio,
             platform=self.selected_platform,
             quality=self.selected_quality,
-            source_fps=self.video_info["fps"],
+            source_fps=self.video_info.fps,
+        )
+        backend = FFmpegRenderingBackend()
+        use_case = RenderSegmentsUseCase(self._presets, backend)
+        self._render_thread = RenderThread(
+            use_case,
+            backend,
+            spec,
+            max_duration,
         )
         self._render_thread.progress.connect(
             self._on_render_progress,
@@ -727,30 +738,20 @@ class MainWindow(QMainWindow):
         )
         self._render_thread.start()
 
-    def _on_render_progress(
-        self,
-        current: int,
-        total: int,
-    ) -> None:
+    def _on_render_progress(self, current: int, total: int) -> None:
         self.status_label.setText(
             f"Rendering part {current} of {total}...",
         )
 
-    def _on_render_done(  # noqa: PLR0912
+    def _on_render_done(
         self,
-        result: dict[str, Any] | list[dict[str, Any]],
+        result: RenderJobResult,
         out_path: str,
     ) -> None:
         self.render_btn.setEnabled(True)  # noqa: FBT003
         self.stop_btn.setVisible(False)  # noqa: FBT003
 
-        cancelled = (
-            isinstance(result, dict) and result.get("error") == "Cancelled"
-        ) or (
-            isinstance(result, list)
-            and any(r.get("error") == "Cancelled" for r in result)
-        )
-        if cancelled:
+        if result.is_cancelled:
             self.status_label.setStyleSheet(
                 "background: #3a3a1e; color: #e0c040;"
                 " padding: 8px 12px; border-radius: 6px;",
@@ -758,40 +759,40 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Render stopped.")
             return
 
-        if isinstance(result, list):
-            errors = [r for r in result if "error" in r]
-            if errors:
-                self.status_label.setStyleSheet(_STYLE_ERROR)
-                self.status_label.setText(
-                    f"Error in part {errors[0]['part']}: {errors[0]['error'][:300]}",
-                )
-            else:
-                total_size = round(
-                    sum(r["size_mb"] for r in result),
-                    2,
-                )
-                self.status_label.setStyleSheet(_STYLE_SUCCESS)
-                encoder = result[0].get("encoder", "libx264")
-                self.status_label.setText(
-                    f"Done! {len(result)} parts  ·  "
-                    f"{result[0]['resolution']}  ·  "
-                    f"{result[0]['fps']} fps  ·  "
-                    f"Total {total_size} MB  ·  {encoder}",
-                )
-        elif "error" in result:
+        if result.multipart:
+            self._show_multipart_result(result)
+            return
+
+        outcome = result.first
+        if outcome.is_failed:
             self.status_label.setStyleSheet(_STYLE_ERROR)
+            self.status_label.setText(f"Error: {(outcome.error or '')[:300]}")
+            return
+        self.status_label.setStyleSheet(_STYLE_SUCCESS)
+        self.status_label.setText(
+            f"Done! {outcome.resolution}  ·  "
+            f"{outcome.fps} fps  ·  "
+            f"{outcome.size_mb} MB  ·  "
+            f"{outcome.encoder}  ->  {out_path}",
+        )
+
+    def _show_multipart_result(self, result: RenderJobResult) -> None:
+        failures = result.failures
+        if failures:
+            self.status_label.setStyleSheet(_STYLE_ERROR)
+            first = failures[0]
             self.status_label.setText(
-                f"Error: {result['error'][:300]}",
+                f"Error in part {first.index}: {(first.error or '')[:300]}",
             )
-        else:
-            self.status_label.setStyleSheet(_STYLE_SUCCESS)
-            encoder = result.get("encoder", "libx264")
-            self.status_label.setText(
-                f"Done! {result['resolution']}  ·  "
-                f"{result['fps']} fps  ·  "
-                f"{result['size_mb']} MB  ·  "
-                f"{encoder}  ->  {out_path}",
-            )
+            return
+        self.status_label.setStyleSheet(_STYLE_SUCCESS)
+        first = result.first
+        self.status_label.setText(
+            f"Done! {result.parts} parts  ·  "
+            f"{first.resolution}  ·  "
+            f"{first.fps} fps  ·  "
+            f"Total {result.total_size_mb} MB  ·  {first.encoder}",
+        )
 
     def _stop_render(self) -> None:
         if self._render_thread is not None and self._render_thread.isRunning():
@@ -809,50 +810,22 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _save_config(self) -> None:
-        top = self.crop_widget.crops["top"]
-        bot = self.crop_widget.crops["bottom"]
-        config.save(
-            {
-                "selected_platform": self.selected_platform,
-                "selected_format": self.selected_format,
-                "selected_quality": self.selected_quality,
-                "split_ratio": self.split_ratio,
-                "volume": self._volume,
-                "crops": {
-                    "top": {
-                        "x": top.x,
-                        "y": top.y,
-                        "w": top.w,
-                        "h": top.h,
-                    },
-                    "bottom": {
-                        "x": bot.x,
-                        "y": bot.y,
-                        "w": bot.w,
-                        "h": bot.h,
-                    },
-                },
-            },
+        preferences = Preferences(
+            selected_platform=self.selected_platform,
+            selected_format=self.selected_format,
+            selected_quality=self.selected_quality,
+            split_ratio=self.split_ratio,
+            volume=self._volume,
+            crops=self.crop_widget.selection,
         )
+        SavePreferencesUseCase(self._prefs_repository).execute(preferences)
 
     def _restore_crops(self) -> None:
-        saved = self._cfg.get("crops", {})
-        tc = saved.get("top", {})
-        bc = saved.get("bottom", {})
-        if tc.get("w", 0) > 0 and tc.get("h", 0) > 0:
-            self.crop_widget.crops["top"] = CropRect(
-                tc["x"],
-                tc["y"],
-                tc["w"],
-                tc["h"],
-            )
-        if bc.get("w", 0) > 0 and bc.get("h", 0) > 0:
-            self.crop_widget.crops["bottom"] = CropRect(
-                bc["x"],
-                bc["y"],
-                bc["w"],
-                bc["h"],
-            )
+        saved = self._prefs.crops
+        current = self.crop_widget.selection
+        top = saved.top if not saved.top.is_empty else current.top
+        bottom = saved.bottom if not saved.bottom.is_empty else current.bottom
+        self.crop_widget.set_selection(CropSelection(top=top, bottom=bottom))
 
     # ---- keyboard ----
 
@@ -867,7 +840,7 @@ class MainWindow(QMainWindow):
             )
         elif event.key() == Qt.Key_L:  # ty: ignore[unresolved-attribute]
             dur = int(
-                (self.video_info["duration"] if self.video_info else 0) * 1000,
+                (self.video_info.duration if self.video_info else 0) * 1000,
             )
             self.player.setPosition(
                 min(dur, self.player.position() + 5000),
@@ -887,25 +860,23 @@ class MainWindow(QMainWindow):
         if not self.video_info:
             return
         pos = self.player.position() / 1000.0
-        if pos < self.timeline.trim_end - 0.1:
-            self.timeline.trim_start = pos
-            self.timeline.update()
-            self.timeline.range_changed.emit(
-                self.timeline.trim_start,
-                self.timeline.trim_end,
-            )
+        updated = SetTrimStartUseCase().execute(
+            SetTrimStartRequest(self.timeline.trim_range, pos),
+        )
+        self.timeline.apply_range(updated)
 
     def _set_trim_end_to_playhead(self) -> None:
         if not self.video_info:
             return
         pos = self.player.position() / 1000.0
-        if pos > self.timeline.trim_start + 0.1:
-            self.timeline.trim_end = pos
-            self.timeline.update()
-            self.timeline.range_changed.emit(
-                self.timeline.trim_start,
-                self.timeline.trim_end,
-            )
+        updated = SetTrimEndUseCase().execute(
+            SetTrimEndRequest(
+                self.timeline.trim_range,
+                pos,
+                self.video_info.duration,
+            ),
+        )
+        self.timeline.apply_range(updated)
 
     def _show_keybindings_help(self) -> None:
         dialog = QDialog(self)

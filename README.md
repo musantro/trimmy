@@ -59,6 +59,52 @@ uv run python -m trimmy path/to/video.mp4
 | J         | Seek back 5s     |
 | L         | Seek forward 5s  |
 
+## Architecture
+
+Trimmy is organised with **domain-driven design** and **vertical slicing**.
+The first level under `trimmy/` is the set of modules (bounded contexts); each
+module is split into the three classic layers:
+
+```
+trimmy/
+├── crop/            # selecting & constraining the two crop regions
+│   ├── domain/          value objects, specifications, services, repository (ABC)
+│   ├── application/     use cases
+│   └── infrastructure/  adapters (in-memory repository)
+├── trim/            # the time range and its segmentation
+│   ├── domain/
+│   ├── application/
+│   └── infrastructure/
+├── render/          # ffmpeg encoding of the split-crop video
+│   ├── domain/          encoding rules, gateways (ABC), preset repository (ABC)
+│   ├── application/     use cases (probe, render, segmented render)
+│   └── infrastructure/  ffmpeg / ffprobe / preset-catalogue adapters
+├── preferences/     # persisting the user's settings
+│   ├── domain/
+│   ├── application/
+│   └── infrastructure/  JSON-file repository
+├── shared/          # shared kernel: Specification & UseCase base classes
+└── presentation/    # PySide6 widgets and the main window
+```
+
+Patterns in use:
+
+- **Repository pattern** — abstract repositories (`CropSelectionRepository`,
+  `PresetRepository`, `PreferencesRepository`) live in the domain layer; their
+  concrete adapters live in `infrastructure/`.
+- **Use Case pattern** — every application operation is a `UseCase` subclass
+  with a single `execute()` method.
+- **Specification pattern** — business rules (bounds checks, fps capping,
+  dynamic-bitrate detection, …) are small composable `Specification` objects.
+
+### Test coverage policy
+
+The coverage gate is **100%**, enforced only on the **domain** and
+**application** layers of every module. The infrastructure layers and the
+PySide6 presentation layer are omitted by configuration (see
+`[tool.coverage.run]` in `pyproject.toml`), so the gate measures business
+logic exclusively.
+
 ## License
 
 MIT
