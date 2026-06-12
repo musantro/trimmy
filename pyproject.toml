@@ -27,19 +27,27 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=trimmy --cov-report=term-missing --cov-fail-under=80"
+addopts = "--cov=trimmy --cov-report=term-missing --cov-fail-under=100"
 
 [tool.coverage.run]
+# Coverage is enforced only on the domain and application layers of every
+# module. The infrastructure layers (and the PySide6 presentation layer)
+# are omitted by configuration, so the 100% gate measures business logic
+# exclusively.
 omit = [
     "trimmy/__main__.py",
-    "trimmy/widgets.py",
-    "trimmy/main_window.py",
+    "trimmy/presentation/*",
+    "trimmy/*/infrastructure/*",
 ]
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
     "if __name__",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "\\.\\.\\.",
 ]
 
 [tool.ruff.lint]

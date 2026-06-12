@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import sys
 
 if sys.version_info >= (3, 12):
@@ -22,26 +21,66 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
-from trimmy.renderer import CropRect
+from trimmy.crop.application.use_cases import (
+    InitializeCropsRequest,
+    InitializeCropsUseCase,
+    MoveCropRequest,
+    MoveCropUseCase,
+    ResizeCropRequest,
+    ResizeCropUseCase,
+    SynchronizeAspectsRequest,
+    SynchronizeAspectsUseCase,
+)
+from trimmy.crop.domain.models import (
+    CropHandle,
+    CropPosition,
+    CropRect,
+    CropSelection,
+    SourceSize,
+)
+from trimmy.crop.domain.services import CropAspects
+from trimmy.crop.infrastructure.repositories import (
+    InMemoryCropSelectionRepository,
+)
+from trimmy.trim.application.use_cases import (
+    SetTrimEndRequest,
+    SetTrimEndUseCase,
+    SetTrimStartRequest,
+    SetTrimStartUseCase,
+)
+from trimmy.trim.domain.models import TrimRange
+
+_HANDLE_HIT_RADIUS = 10
+_HANDLE_SIZE = 10
+
+_CROP_COLORS: list[tuple[CropPosition, str]] = [
+    (CropPosition.TOP, "#4ecdc4"),
+    (CropPosition.BOTTOM, "#ffe66d"),
+]
 
 
 class CropWidget(QWidget):
-    """Interactive overlay for dragging two crop rectangles on a video frame."""
+    """Interactive overlay for dragging two crop rectangles on a frame."""
 
     crops_changed = Signal()
 
     def __init__(self) -> None:
         super().__init__()
         self.frame: QImage | None = None
-        self.source_w: int = 0
-        self.source_h: int = 0
-        self.crops: dict[str, CropRect] = {"top": CropRect(), "bottom": CropRect()}
-        self.crop_aspects: dict[str, float] = {"top": 1.0, "bottom": 1.0}
+        self.source = SourceSize(0, 0)
+        self.aspects = CropAspects(1.0, 1.0)
 
-        self._drag_key: str | None = None
-        self._drag_type: str | None = None
+        self._repository = InMemoryCropSelectionRepository()
+        self._initialize = InitializeCropsUseCase(self._repository)
+        self._synchronize = SynchronizeAspectsUseCase(self._repository)
+        self._move = MoveCropUseCase(self._repository)
+        self._resize = ResizeCropUseCase(self._repository)
+
+        self._drag_position: CropPosition | None = None
+        self._drag_handle: CropHandle | None = None
+        self._drag_moving = False
         self._drag_start = QPointF()
-        self._drag_orig = CropRect()
+        self._drag_origin = CropRect()
 
         self._vid_ox: float = 0.0
         self._vid_oy: float = 0.0
@@ -54,6 +93,16 @@ class CropWidget(QWidget):
             QSizePolicy.Expanding,  # ty: ignore[unresolved-attribute]
         )
 
+    @property
+    def selection(self) -> CropSelection:
+        """Return the current crop selection."""
+        return self._repository.get()
+
+    def set_selection(self, selection: CropSelection) -> None:
+        """Replace the current crop selection."""
+        self._repository.save(selection)
+        self.update()
+
     def set_frame(self, image: QImage) -> None:
         """Update the displayed video frame."""
         self.frame = image
@@ -61,48 +110,21 @@ class CropWidget(QWidget):
 
     def set_source_size(self, w: int, h: int) -> None:
         """Store the source video dimensions."""
-        self.source_w = w
-        self.source_h = h
+        self.source = SourceSize(w, h)
 
     def init_crops(self) -> None:
         """Reset crop rectangles to default positions."""
-        w = self.source_w * 0.6
-        h = self.source_h * 0.45
-        self.crops["top"] = CropRect(0, 0, w, h)
-        self.crops["bottom"] = CropRect(
-            self.source_w * 0.2,
-            self.source_h * 0.5,
-            w,
-            h,
-        )
+        self._initialize.execute(InitializeCropsRequest(self.source))
+        self.update()
 
-    def set_crop_aspects(
-        self,
-        top_aspect: float,
-        bottom_aspect: float,
-    ) -> None:
+    def set_crop_aspects(self, top_aspect: float, bottom_aspect: float) -> None:
         """Set aspect ratios and re-sync both crop rectangles."""
-        self.crop_aspects["top"] = top_aspect
-        self.crop_aspects["bottom"] = bottom_aspect
-        self._sync_aspect("top")
-        self._sync_aspect("bottom")
+        self.aspects = CropAspects(top=top_aspect, bottom=bottom_aspect)
+        self._synchronize.execute(
+            SynchronizeAspectsRequest(self.aspects, self.source),
+        )
         self.update()
         self.crops_changed.emit()
-
-    def _sync_aspect(self, key: str) -> None:
-        c = self.crops[key]
-        aspect = self.crop_aspects[key]
-        new_h = c.w / aspect
-        clamped_h = min(new_h, self.source_h)
-        final_w = clamped_h * aspect
-        c.w = min(final_w, self.source_w)
-        c.h = clamped_h
-        if c.x + c.w > self.source_w:
-            c.x = self.source_w - c.w
-        if c.y + c.h > self.source_h:
-            c.y = self.source_h - c.h
-        c.x = max(0, c.x)
-        c.y = max(0, c.y)
 
     # ---- painting ----
 
@@ -113,7 +135,7 @@ class CropWidget(QWidget):
         p.setRenderHint(QPainter.Antialiasing)  # ty: ignore[unresolved-attribute]
         p.fillRect(self.rect(), QColor("#000000"))
 
-        if self.frame is None or self.source_w == 0:
+        if self.frame is None or self.source.width == 0:
             p.setPen(QColor("#666"))
             p.drawText(
                 self.rect(),
@@ -122,7 +144,7 @@ class CropWidget(QWidget):
             )
             return
 
-        aspect = self.source_w / self.source_h
+        aspect = self.source.width / self.source.height
         dw = self.width()
         dh = int(dw / aspect)
         if dh > self.height():
@@ -131,7 +153,7 @@ class CropWidget(QWidget):
         ox = (self.width() - dw) // 2
         oy = (self.height() - dh) // 2
         self._vid_ox, self._vid_oy = ox, oy
-        self._vid_scale = dw / self.source_w
+        self._vid_scale = dw / self.source.width
 
         p.drawImage(
             QRectF(ox, oy, dw, dh),
@@ -139,14 +161,16 @@ class CropWidget(QWidget):
             QRectF(0, 0, self.frame.width(), self.frame.height()),
         )
 
-        for key, color in [
-            ("top", QColor("#4ecdc4")),
-            ("bottom", QColor("#ffe66d")),
-        ]:
-            self._paint_crop(p, key, color)
+        for position, hexcolor in _CROP_COLORS:
+            self._paint_crop(p, position, QColor(hexcolor))
 
-    def _paint_crop(self, p: QPainter, key: str, color: QColor) -> None:
-        r = self._crop_display_rect(key)
+    def _paint_crop(
+        self,
+        p: QPainter,
+        position: CropPosition,
+        color: QColor,
+    ) -> None:
+        r = self._crop_display_rect(position)
         fill = QColor(color)
         fill.setAlpha(35)
         p.setPen(QPen(color, 2))
@@ -158,9 +182,9 @@ class CropWidget(QWidget):
         font.setPointSize(11)
         p.setFont(font)
         p.setPen(color)
-        p.drawText(r, Qt.AlignCenter, key.upper())  # ty: ignore[unresolved-attribute]
+        p.drawText(r, Qt.AlignCenter, position.value.upper())  # ty: ignore[unresolved-attribute]
 
-        hs = 10
+        hs = _HANDLE_SIZE
         p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
         p.setBrush(Qt.white)  # ty: ignore[unresolved-attribute]
         for cx, cy in [
@@ -173,8 +197,8 @@ class CropWidget(QWidget):
 
     # ---- coordinate helpers ----
 
-    def _crop_display_rect(self, key: str) -> QRectF:
-        c = self.crops[key]
+    def _crop_display_rect(self, position: CropPosition) -> QRectF:
+        c = self.selection.get(position)
         s = self._vid_scale
         return QRectF(
             self._vid_ox + c.x * s,
@@ -183,13 +207,16 @@ class CropWidget(QWidget):
             c.h * s,
         )
 
-    def _handle_centers(self, key: str) -> list[tuple[str, QPointF]]:
-        r = self._crop_display_rect(key)
+    def _handle_centers(
+        self,
+        position: CropPosition,
+    ) -> list[tuple[CropHandle, QPointF]]:
+        r = self._crop_display_rect(position)
         return [
-            ("nw", QPointF(r.left(), r.top())),
-            ("ne", QPointF(r.right(), r.top())),
-            ("sw", QPointF(r.left(), r.bottom())),
-            ("se", QPointF(r.right(), r.bottom())),
+            (CropHandle.NW, QPointF(r.left(), r.top())),
+            (CropHandle.NE, QPointF(r.right(), r.top())),
+            (CropHandle.SW, QPointF(r.left(), r.bottom())),
+            (CropHandle.SE, QPointF(r.right(), r.bottom())),
         ]
 
     def _widget_to_source(self, pos: QPointF) -> QPointF:
@@ -203,70 +230,73 @@ class CropWidget(QWidget):
     @override
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Begin a drag on a crop handle or body."""
-        if self.source_w == 0:
+        if self.source.width == 0:
             return
         pos = event.position()
-        hit_radius = 10
 
-        for key in ("top", "bottom"):
-            for hname, hcenter in self._handle_centers(key):
-                if (pos - hcenter).manhattanLength() < hit_radius:
-                    self._drag_key = key
-                    self._drag_type = f"resize_{hname}"
-                    self._drag_start = self._widget_to_source(pos)
-                    self._drag_orig = copy.copy(self.crops[key])
+        for position in (CropPosition.TOP, CropPosition.BOTTOM):
+            for handle, center in self._handle_centers(position):
+                if (pos - center).manhattanLength() < _HANDLE_HIT_RADIUS:
+                    self._begin_drag(position, pos, handle=handle)
                     return
 
-        for key in ("top", "bottom"):
-            if self._crop_display_rect(key).contains(pos):
-                self._drag_key = key
-                self._drag_type = "move"
-                self._drag_start = self._widget_to_source(pos)
-                self._drag_orig = copy.copy(self.crops[key])
+        for position in (CropPosition.TOP, CropPosition.BOTTOM):
+            if self._crop_display_rect(position).contains(pos):
+                self._begin_drag(position, pos, handle=None)
                 return
+
+    def _begin_drag(
+        self,
+        position: CropPosition,
+        pos: QPointF,
+        *,
+        handle: CropHandle | None,
+    ) -> None:
+        self._drag_position = position
+        self._drag_handle = handle
+        self._drag_moving = handle is None
+        self._drag_start = self._widget_to_source(pos)
+        self._drag_origin = self.selection.get(position)
 
     @override
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Update the active crop rectangle while dragging."""
         pos = event.position()
 
-        if self._drag_key is None:
+        if self._drag_position is None:
             self._update_cursor(pos)
             return
 
         src = self._widget_to_source(pos)
         dx = src.x() - self._drag_start.x()
         dy = src.y() - self._drag_start.y()
-        o = self._drag_orig
 
-        if self._drag_type == "move":
-            nx = max(0.0, min(o.x + dx, self.source_w - o.w))
-            ny = max(0.0, min(o.y + dy, self.source_h - o.h))
-            self.crops[self._drag_key].x = nx
-            self.crops[self._drag_key].y = ny
-        elif self._drag_type is not None:
-            handle = self._drag_type.split("_")[1]
-            aspect = self.crop_aspects[self._drag_key]
-            is_left = handle in ("nw", "sw")
-            is_top = handle in ("nw", "ne")
-
-            w = o.w - dx if is_left else o.w + dx
-            w = max(30, w)
-            h = w / aspect
-
-            x = (o.x + o.w - w) if is_left else o.x
-            y = (o.y + o.h - h) if is_top else o.y
-
-            x = max(0, x)
-            y = max(0, y)
-            if x + w > self.source_w:
-                w = self.source_w - x
-                h = w / aspect
-            if y + h > self.source_h:
-                h = self.source_h - y
-                w = h * aspect
-
-            self.crops[self._drag_key] = CropRect(x, y, w, h)
+        if self._drag_moving:
+            self._move.execute(
+                MoveCropRequest(
+                    self._drag_position,
+                    self._drag_origin,
+                    dx,
+                    dy,
+                    self.source,
+                ),
+            )
+        elif self._drag_handle is not None:
+            aspect = (
+                self.aspects.top
+                if self._drag_position is CropPosition.TOP
+                else self.aspects.bottom
+            )
+            self._resize.execute(
+                ResizeCropRequest(
+                    self._drag_position,
+                    self._drag_handle,
+                    self._drag_origin,
+                    dx,
+                    aspect,
+                    self.source,
+                ),
+            )
 
         self.update()
         self.crops_changed.emit()
@@ -274,22 +304,22 @@ class CropWidget(QWidget):
     @override
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """End the current drag operation."""
-        self._drag_key = None
-        self._drag_type = None
+        self._drag_position = None
+        self._drag_handle = None
+        self._drag_moving = False
 
     def _update_cursor(self, pos: QPointF) -> None:
-        hit = 10
-        for key in ("top", "bottom"):
-            for hname, hcenter in self._handle_centers(key):
-                if (pos - hcenter).manhattanLength() < hit:
+        for position in (CropPosition.TOP, CropPosition.BOTTOM):
+            for handle, center in self._handle_centers(position):
+                if (pos - center).manhattanLength() < _HANDLE_HIT_RADIUS:
                     cur = (
                         Qt.SizeFDiagCursor  # ty: ignore[unresolved-attribute]
-                        if hname in ("nw", "se")
+                        if handle in (CropHandle.NW, CropHandle.SE)
                         else Qt.SizeBDiagCursor  # ty: ignore[unresolved-attribute]
                     )
                     self.setCursor(cur)
                     return
-            if self._crop_display_rect(key).contains(pos):
+            if self._crop_display_rect(position).contains(pos):
                 self.setCursor(Qt.SizeAllCursor)  # ty: ignore[unresolved-attribute]
                 return
         self.setCursor(Qt.ArrowCursor)  # ty: ignore[unresolved-attribute]
@@ -304,9 +334,7 @@ class PreviewWidget(QWidget):
         super().__init__()
         self.setFixedSize(270, 480)
         self.frame: QImage | None = None
-        self.source_w: int = 0
-        self.source_h: int = 0
-        self.crops: dict[str, CropRect] = {"top": CropRect(), "bottom": CropRect()}
+        self.selection = CropSelection(top=CropRect(), bottom=CropRect())
         self.split_ratio: float = 0.5
         self._dragging: bool = False
 
@@ -315,10 +343,9 @@ class PreviewWidget(QWidget):
         self.frame = image
         self.update()
 
-    def set_crops(self, top: CropRect, bottom: CropRect) -> None:
+    def set_selection(self, selection: CropSelection) -> None:
         """Update the crop regions shown in the preview."""
-        self.crops["top"] = copy.copy(top)
-        self.crops["bottom"] = copy.copy(bottom)
+        self.selection = selection
         self.update()
 
     @override
@@ -334,16 +361,16 @@ class PreviewWidget(QWidget):
         top_h = int(self.height() * self.split_ratio)
         bot_h = self.height() - top_h
 
-        tc = self.crops["top"]
-        if tc.w > 0 and tc.h > 0:
+        tc = self.selection.top
+        if not tc.is_empty:
             p.drawImage(
                 QRectF(0, 0, self.width(), top_h),
                 self.frame,
                 QRectF(tc.x, tc.y, tc.w, tc.h),
             )
 
-        bc = self.crops["bottom"]
-        if bc.w > 0 and bc.h > 0:
+        bc = self.selection.bottom
+        if not bc.is_empty:
             p.drawImage(
                 QRectF(0, top_h, self.width(), bot_h),
                 self.frame,
@@ -406,18 +433,33 @@ class TimelineWidget(QWidget):
         self.setFixedHeight(72)
         self.setMinimumWidth(200)
         self._dragging: str | None = None
+        self._set_start = SetTrimStartUseCase()
+        self._set_end = SetTrimEndUseCase()
+
+    @property
+    def trim_range(self) -> TrimRange:
+        """Return the current trim range as a domain value object."""
+        return TrimRange(self.trim_start, self.trim_end)
 
     def set_duration(self, dur: float) -> None:
         """Set the total video duration and reset trim handles."""
         self.duration = dur
-        self.trim_start = 0.0
-        self.trim_end = dur
+        full = TrimRange.full(dur)
+        self.trim_start = full.start
+        self.trim_end = full.end
         self.update()
 
     def set_position(self, pos: float) -> None:
         """Update the current playback position indicator."""
         self.position = pos
         self.update()
+
+    def apply_range(self, trim_range: TrimRange) -> None:
+        """Adopt *trim_range* and notify listeners."""
+        self.trim_start = trim_range.start
+        self.trim_end = trim_range.end
+        self.update()
+        self.range_changed.emit(self.trim_start, self.trim_end)
 
     def _bar(self) -> QRectF:
         return QRectF(20, 8, self.width() - 40, 36)
@@ -518,13 +560,16 @@ class TimelineWidget(QWidget):
             return
         t = self._x2t(event.position().x())
         if self._dragging == "start":
-            self.trim_start = max(0, min(t, self.trim_end - 0.1))
+            updated = self._set_start.execute(
+                SetTrimStartRequest(self.trim_range, t),
+            )
+            self.trim_start = updated.start
             self.seek_requested.emit(self.trim_start)
         else:
-            self.trim_end = min(
-                self.duration,
-                max(t, self.trim_start + 0.1),
+            updated = self._set_end.execute(
+                SetTrimEndRequest(self.trim_range, t, self.duration),
             )
+            self.trim_end = updated.end
             self.seek_requested.emit(self.trim_end)
         self.update()
         self.range_changed.emit(self.trim_start, self.trim_end)
