@@ -1,5 +1,7 @@
 """FFmpeg subprocess integration for video rendering."""
 
+from __future__ import annotations
+
 import contextlib
 import json
 import logging
@@ -7,13 +9,14 @@ import subprocess
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from trimmy.presets import PLATFORM_PRESETS
 
 logger = logging.getLogger(__name__)
 
-_gpu_encoder_cache = None
-_gpu_detection_done = False
+_gpu_encoder_cache: str | None = None
+_gpu_detection_done: bool = False
 
 _NVENC_PRESET = {
     "slower": "p7",
@@ -52,7 +55,7 @@ class RenderContext:
     """Wraps FFmpeg subprocess execution with cancellation support."""
 
     def __init__(self) -> None:
-        self._proc: subprocess.Popen | None = None
+        self._proc: subprocess.Popen[str] | None = None
         self._lock = threading.Lock()
         self._cancelled = False
 
@@ -69,7 +72,7 @@ class RenderContext:
         """Return whether cancellation has been requested."""
         return self._cancelled
 
-    def run(self, cmd: list[str]) -> subprocess.CompletedProcess | None:
+    def run(self, cmd: list[str]) -> subprocess.CompletedProcess[str] | None:
         """Execute *cmd* and return the result, or ``None`` if cancelled."""
         with self._lock:
             if self._cancelled:
@@ -133,10 +136,10 @@ def detect_gpu_encoder() -> str | None:
 
 def _gpu_codec_args(
     encoder: str,
-    preset: dict,
+    preset: dict[str, Any],
 ) -> list[str] | None:
-    cpu_preset = preset["preset"]
-    crf = preset["crf"]
+    cpu_preset: str = preset["preset"]
+    crf: int = preset["crf"]
 
     if encoder == "h264_nvenc":
         return [
@@ -176,7 +179,7 @@ def _gpu_codec_args(
     return None
 
 
-def _cpu_codec_args(preset: dict) -> list[str]:
+def _cpu_codec_args(preset: dict[str, Any]) -> list[str]:
     return [
         "-c:v",
         "libx264",
@@ -194,7 +197,7 @@ def _build_render_cmd(  # noqa: PLR0913
     trim_end: float,
     filter_complex: str,
     codec_args: list[str],
-    preset: dict,
+    preset: dict[str, Any],
     maxrate: str,
     bufsize: str,
     *,
@@ -247,7 +250,7 @@ def _build_render_cmd(  # noqa: PLR0913
     return cmd
 
 
-def probe_video(path: Path) -> dict:
+def probe_video(path: Path) -> dict[str, Any]:
     """Run ffprobe and return duration, width, height, and fps."""
     proc = subprocess.run(  # noqa: S603
         [  # noqa: S607
@@ -291,13 +294,13 @@ def render_video(  # noqa: PLR0913
     quality: str,
     source_fps: float,
     ctx: RenderContext | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Render a split-crop video using the given platform preset."""
     if ctx is None:
         ctx = RenderContext()
     preset = PLATFORM_PRESETS[platform][quality]
-    output_width = preset["width"]
-    output_height = preset["height"]
+    output_width: int = preset["width"]
+    output_height: int = preset["height"]
 
     top_out_h = int(output_height * split_ratio)
     bottom_out_h = output_height - top_out_h
@@ -322,9 +325,9 @@ def render_video(  # noqa: PLR0913
     if total_h != output_height:
         bottom_out_h += output_height - total_h
 
-    max_fps = preset["max_fps"]
+    max_fps: int = preset["max_fps"]
     fps_filter = f",fps={max_fps}" if source_fps > max_fps else ""
-    output_fps = min(source_fps, max_fps)
+    output_fps = min(source_fps, float(max_fps))
 
     filter_complex = (
         f"[0:v]crop={tw}:{th}:{tx}:{ty},"
@@ -335,19 +338,25 @@ def render_video(  # noqa: PLR0913
     )
 
     duration = trim_end - trim_start
-    maxrate = preset.get("maxrate")
-    bufsize = preset.get("bufsize")
+    maxrate: str | None = preset.get("maxrate")
+    bufsize: str | None = preset.get("bufsize")
     if maxrate is None and duration > 0:
-        audio_kbps = int(preset["audio_bitrate"].replace("k", ""))
-        total_kbps = (preset["max_size_mb"] * 8 * 1024) / duration
+        audio_bitrate: str = preset["audio_bitrate"]
+        audio_kbps = int(audio_bitrate.replace("k", ""))
+        max_size_mb: int = preset["max_size_mb"]
+        total_kbps = (max_size_mb * 8 * 1024) / duration
         video_kbps = max(200, int(total_kbps - audio_kbps))
         maxrate = f"{video_kbps}k"
-        bufsize = f"{video_kbps * preset['bufsize_mult']}k"
+        bufsize_mult: int = preset["bufsize_mult"]
+        bufsize = f"{video_kbps * bufsize_mult}k"
 
     gpu_enc = detect_gpu_encoder()
 
     if gpu_enc:
         gpu_args = _gpu_codec_args(gpu_enc, preset)
+        assert gpu_args is not None  # noqa: S101
+        assert maxrate is not None  # noqa: S101
+        assert bufsize is not None  # noqa: S101
         cmd = _build_render_cmd(
             src_path,
             out_path,
@@ -381,6 +390,8 @@ def render_video(  # noqa: PLR0913
         return {"error": "Cancelled"}
 
     cpu_args = _cpu_codec_args(preset)
+    assert maxrate is not None  # noqa: S101
+    assert bufsize is not None  # noqa: S101
     cmd = _build_render_cmd(
         src_path,
         out_path,

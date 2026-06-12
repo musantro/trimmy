@@ -1,13 +1,34 @@
 """Main application window, render thread, and drop overlay."""
 
+from __future__ import annotations
+
 import logging
 import math
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 from PySide6.QtCore import Qt, QThread, QUrl, Signal
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
+from PySide6.QtGui import (
+    QCloseEvent,
+    QColor,
+    QDragEnterEvent,
+    QDragLeaveEvent,
+    QDropEvent,
+    QFont,
+    QImage,
+    QKeyEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+    QResizeEvent,
+)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QVideoSink
 from PySide6.QtWidgets import (
     QApplication,
@@ -50,16 +71,17 @@ class DropOverlay(QWidget):
             False,  # noqa: FBT003
         )
 
-    def paintEvent(self, event) -> None:  # noqa: N802
+    @override
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         """Draw the drop-target border and label."""
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.Antialiasing)  # ty: ignore[unresolved-attribute]
         p.fillRect(self.rect(), QColor(10, 10, 30, 200))
 
         border = QColor("#e94560")
-        pen = QPen(border, 3, Qt.DashLine)
+        pen = QPen(border, 3, Qt.DashLine)  # ty: ignore[unresolved-attribute]
         p.setPen(pen)
-        p.setBrush(Qt.NoBrush)
+        p.setBrush(Qt.NoBrush)  # ty: ignore[unresolved-attribute]
         margin = 40
         p.drawRoundedRect(
             margin,
@@ -75,9 +97,10 @@ class DropOverlay(QWidget):
         font.setPointSize(28)
         font.setBold(True)  # noqa: FBT003
         p.setFont(font)
-        p.drawText(self.rect(), Qt.AlignCenter, "Drop video here")
+        p.drawText(self.rect(), Qt.AlignCenter, "Drop video here")  # ty: ignore[unresolved-attribute]
 
-    def resizeEvent(self, event) -> None:  # noqa: N802
+    @override
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         """Forward resize to the base class."""
         super().resizeEvent(event)
 
@@ -120,8 +143,8 @@ class RenderThread(QThread):
 
     def __init__(
         self,
-        max_duration: float | None = None,
-        **kwargs: object,
+        max_duration: int | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
         self._kwargs = kwargs
@@ -132,6 +155,7 @@ class RenderThread(QThread):
         """Request cancellation of the running render."""
         self._ctx.cancel()
 
+    @override
     def run(self) -> None:  # noqa: D102
         trim_start = self._kwargs["trim_start"]
         trim_end = self._kwargs["trim_end"]
@@ -147,7 +171,7 @@ class RenderThread(QThread):
 
         num_parts = math.ceil(total_duration / self._max_duration)
         out_path = self._kwargs["out_path"]
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
 
         for i in range(num_parts):
             if self._ctx.cancelled:
@@ -191,14 +215,14 @@ class MainWindow(QMainWindow):
 
         self.setAcceptDrops(True)  # noqa: FBT003
 
-        self.video_info: dict | None = None
+        self.video_info: dict[str, Any] | None = None
         self.current_frame: QImage | None = None
         self._cfg = config.load()
         self.selected_platform: str = self._cfg["selected_platform"]
         self.selected_format: str = self._cfg["selected_format"]
         self.selected_quality: str = self._cfg["selected_quality"]
         self.split_ratio: float = self._cfg["split_ratio"]
-        self._waiting_first_frame = False
+        self._waiting_first_frame: bool = False
         self._render_thread: RenderThread | None = None
 
         self.player = QMediaPlayer()
@@ -319,13 +343,13 @@ class MainWindow(QMainWindow):
         right.addWidget(self._section_label("Preview (9:16)"))
         self.preview = PreviewWidget()
         self.preview.split_ratio = self.split_ratio
-        right.addWidget(self.preview, alignment=Qt.AlignHCenter)
+        right.addWidget(self.preview, alignment=Qt.AlignHCenter)  # ty: ignore[unresolved-attribute]
         pct = int(self.split_ratio * 100)
         self.split_label = QLabel(
             f"Split: {pct}% / {100 - pct}%"
             " — Drag the red bar to adjust",
         )
-        self.split_label.setAlignment(Qt.AlignCenter)
+        self.split_label.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]
         self.split_label.setStyleSheet(
             "color: #888; font-size: 12px;",
         )
@@ -410,7 +434,7 @@ class MainWindow(QMainWindow):
 
     # ---- media player callbacks ----
 
-    def _on_frame(self, frame: object) -> None:
+    def _on_frame(self, frame: Any) -> None:
         img = frame.toImage()
         if img.isNull():
             return
@@ -494,7 +518,8 @@ class MainWindow(QMainWindow):
         info = PLATFORM_INFO[self.selected_platform][
             self.selected_quality
         ]
-        out_w, out_h = (int(x) for x in info["res"].split("x"))
+        res: str = info["res"]
+        out_w, out_h = (int(x) for x in res.split("x"))
         top_h = out_h * self.split_ratio
         bot_h = out_h * (1 - self.split_ratio)
         self.crop_widget.set_crop_aspects(
@@ -531,7 +556,7 @@ class MainWindow(QMainWindow):
                     f,
                 ),
             )
-        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
+        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))  # ty: ignore[invalid-argument-type]
 
     def _select_platform(
         self,
@@ -551,7 +576,7 @@ class MainWindow(QMainWindow):
         self,
         platform: str,
         format_key: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         for fmt in PLATFORM_FORMATS[platform]:
             if fmt["key"] == format_key:
                 return fmt
@@ -684,7 +709,7 @@ class MainWindow(QMainWindow):
 
     def _on_render_done(  # noqa: PLR0912
         self,
-        result: dict | list[dict],
+        result: dict[str, Any] | list[dict[str, Any]],
         out_path: str,
     ) -> None:
         self.render_btn.setEnabled(True)  # noqa: FBT003
@@ -750,7 +775,8 @@ class MainWindow(QMainWindow):
         ):
             self._render_thread.stop()
 
-    def closeEvent(self, event) -> None:  # noqa: N802
+    @override
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Shut down the render thread and save config on exit."""
         if (
             self._render_thread is not None
@@ -810,15 +836,16 @@ class MainWindow(QMainWindow):
 
     # ---- keyboard ----
 
-    def keyPressEvent(self, event) -> None:  # noqa: N802
+    @override
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
         """Handle Space (play/pause) and arrow-key seeking."""
-        if event.key() == Qt.Key_Space:
+        if event.key() == Qt.Key_Space:  # ty: ignore[unresolved-attribute]
             self._toggle_play()
-        elif event.key() == Qt.Key_Left:
+        elif event.key() == Qt.Key_Left:  # ty: ignore[unresolved-attribute]
             self.player.setPosition(
                 max(0, self.player.position() - 5000),
             )
-        elif event.key() == Qt.Key_Right:
+        elif event.key() == Qt.Key_Right:  # ty: ignore[unresolved-attribute]
             dur = int(
                 (
                     self.video_info["duration"]
@@ -835,7 +862,8 @@ class MainWindow(QMainWindow):
 
     # ---- drag and drop ----
 
-    def dragEnterEvent(self, event) -> None:  # noqa: N802
+    @override
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
         """Show the drop overlay when a file is dragged in."""
         if event.mimeData().hasUrls():
             self._drop_overlay.setGeometry(
@@ -845,11 +873,13 @@ class MainWindow(QMainWindow):
             self._drop_overlay.raise_()
             event.acceptProposedAction()
 
-    def dragLeaveEvent(self, event) -> None:  # noqa: N802
+    @override
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:  # noqa: N802
         """Hide the drop overlay when the drag leaves."""
         self._drop_overlay.hide()
 
-    def dropEvent(self, event) -> None:  # noqa: N802
+    @override
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802
         """Open the first dropped video file."""
         self._drop_overlay.hide()
         for url in event.mimeData().urls():

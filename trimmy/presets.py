@@ -1,6 +1,10 @@
 """Platform-specific encoding presets for social media exports."""
 
-PLATFORM_PRESETS: dict = {
+from __future__ import annotations
+
+from typing import Any
+
+PLATFORM_PRESETS: dict[str, dict[str, dict[str, Any]]] = {
     "instagram": {
         "max": {
             "width": 1080,
@@ -153,7 +157,7 @@ PLATFORM_PRESETS: dict = {
     },
 }
 
-PLATFORM_INFO: dict = {
+PLATFORM_INFO: dict[str, dict[str, dict[str, Any]]] = {
     "instagram": {
         "max": {
             "res": "1080x1920",
@@ -256,7 +260,7 @@ PLATFORM_INFO: dict = {
     },
 }
 
-PLATFORM_FORMATS: dict = {
+PLATFORM_FORMATS: dict[str, list[dict[str, Any]]] = {
     "instagram": [
         {"key": "feed", "label": "Feed", "max_duration": 3600},
         {"key": "reels", "label": "Reels", "max_duration": 90},

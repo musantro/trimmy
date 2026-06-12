@@ -1,9 +1,25 @@
 """PySide6 widgets for crop selection, preview, and timeline."""
 
+from __future__ import annotations
+
 import copy
+import sys
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QImage,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+)
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from trimmy.renderer import CropRect
@@ -17,25 +33,25 @@ class CropWidget(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.frame: QImage | None = None
-        self.source_w = 0
-        self.source_h = 0
-        self.crops = {"top": CropRect(), "bottom": CropRect()}
-        self.crop_aspects = {"top": 1.0, "bottom": 1.0}
+        self.source_w: int = 0
+        self.source_h: int = 0
+        self.crops: dict[str, CropRect] = {"top": CropRect(), "bottom": CropRect()}
+        self.crop_aspects: dict[str, float] = {"top": 1.0, "bottom": 1.0}
 
         self._drag_key: str | None = None
         self._drag_type: str | None = None
         self._drag_start = QPointF()
         self._drag_orig = CropRect()
 
-        self._vid_ox = 0.0
-        self._vid_oy = 0.0
-        self._vid_scale = 1.0
+        self._vid_ox: float = 0.0
+        self._vid_oy: float = 0.0
+        self._vid_scale: float = 1.0
 
         self.setMouseTracking(True)  # noqa: FBT003
         self.setMinimumSize(400, 250)
         self.setSizePolicy(
-            QSizePolicy.Expanding,
-            QSizePolicy.Expanding,
+            QSizePolicy.Expanding,  # ty: ignore[unresolved-attribute]
+            QSizePolicy.Expanding,  # ty: ignore[unresolved-attribute]
         )
 
     def set_frame(self, image: QImage) -> None:
@@ -90,17 +106,18 @@ class CropWidget(QWidget):
 
     # ---- painting ----
 
-    def paintEvent(self, event) -> None:  # noqa: N802
+    @override
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         """Draw the video frame and crop overlays."""
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.Antialiasing)  # ty: ignore[unresolved-attribute]
         p.fillRect(self.rect(), QColor("#000000"))
 
         if self.frame is None or self.source_w == 0:
             p.setPen(QColor("#666"))
             p.drawText(
                 self.rect(),
-                Qt.AlignCenter,
+                Qt.AlignCenter,  # ty: ignore[unresolved-attribute]
                 "Open a video to begin",
             )
             return
@@ -141,11 +158,11 @@ class CropWidget(QWidget):
         font.setPointSize(11)
         p.setFont(font)
         p.setPen(color)
-        p.drawText(r, Qt.AlignCenter, key.upper())
+        p.drawText(r, Qt.AlignCenter, key.upper())  # ty: ignore[unresolved-attribute]
 
         hs = 10
-        p.setPen(Qt.NoPen)
-        p.setBrush(Qt.white)
+        p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
+        p.setBrush(Qt.white)  # ty: ignore[unresolved-attribute]
         for cx, cy in [
             (r.left(), r.top()),
             (r.right(), r.top()),
@@ -183,7 +200,8 @@ class CropWidget(QWidget):
 
     # ---- mouse interaction ----
 
-    def mousePressEvent(self, event) -> None:  # noqa: N802
+    @override
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Begin a drag on a crop handle or body."""
         if self.source_w == 0:
             return
@@ -207,7 +225,8 @@ class CropWidget(QWidget):
                 self._drag_orig = copy.copy(self.crops[key])
                 return
 
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+    @override
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Update the active crop rectangle while dragging."""
         pos = event.position()
 
@@ -221,11 +240,11 @@ class CropWidget(QWidget):
         o = self._drag_orig
 
         if self._drag_type == "move":
-            nx = max(0, min(o.x + dx, self.source_w - o.w))
-            ny = max(0, min(o.y + dy, self.source_h - o.h))
+            nx = max(0.0, min(o.x + dx, self.source_w - o.w))
+            ny = max(0.0, min(o.y + dy, self.source_h - o.h))
             self.crops[self._drag_key].x = nx
             self.crops[self._drag_key].y = ny
-        else:
+        elif self._drag_type is not None:
             handle = self._drag_type.split("_")[1]
             aspect = self.crop_aspects[self._drag_key]
             is_left = handle in ("nw", "sw")
@@ -252,7 +271,8 @@ class CropWidget(QWidget):
         self.update()
         self.crops_changed.emit()
 
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+    @override
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """End the current drag operation."""
         self._drag_key = None
         self._drag_type = None
@@ -263,16 +283,16 @@ class CropWidget(QWidget):
             for hname, hcenter in self._handle_centers(key):
                 if (pos - hcenter).manhattanLength() < hit:
                     cur = (
-                        Qt.SizeFDiagCursor
+                        Qt.SizeFDiagCursor  # ty: ignore[unresolved-attribute]
                         if hname in ("nw", "se")
-                        else Qt.SizeBDiagCursor
+                        else Qt.SizeBDiagCursor  # ty: ignore[unresolved-attribute]
                     )
                     self.setCursor(cur)
                     return
             if self._crop_display_rect(key).contains(pos):
-                self.setCursor(Qt.SizeAllCursor)
+                self.setCursor(Qt.SizeAllCursor)  # ty: ignore[unresolved-attribute]
                 return
-        self.setCursor(Qt.ArrowCursor)
+        self.setCursor(Qt.ArrowCursor)  # ty: ignore[unresolved-attribute]
 
 
 class PreviewWidget(QWidget):
@@ -284,9 +304,11 @@ class PreviewWidget(QWidget):
         super().__init__()
         self.setFixedSize(270, 480)
         self.frame: QImage | None = None
-        self.crops = {"top": CropRect(), "bottom": CropRect()}
-        self.split_ratio = 0.5
-        self._dragging = False
+        self.source_w: int = 0
+        self.source_h: int = 0
+        self.crops: dict[str, CropRect] = {"top": CropRect(), "bottom": CropRect()}
+        self.split_ratio: float = 0.5
+        self._dragging: bool = False
 
     def set_frame(self, image: QImage) -> None:
         """Update the preview source frame."""
@@ -299,11 +321,12 @@ class PreviewWidget(QWidget):
         self.crops["bottom"] = copy.copy(bottom)
         self.update()
 
-    def paintEvent(self, event) -> None:  # noqa: N802
+    @override
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         """Render the composited preview with a split bar."""
         p = QPainter(self)
-        p.setRenderHint(QPainter.SmoothPixmapTransform)
-        p.fillRect(self.rect(), Qt.black)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)  # ty: ignore[unresolved-attribute]
+        p.fillRect(self.rect(), Qt.black)  # ty: ignore[unresolved-attribute]
 
         if self.frame is None:
             return
@@ -327,40 +350,43 @@ class PreviewWidget(QWidget):
                 QRectF(bc.x, bc.y, bc.w, bc.h),
             )
 
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
         p.setBrush(QColor("#e94560"))
         p.drawRect(QRectF(0, top_h - 3, self.width(), 6))
 
         border = QColor("#333333")
         p.setPen(QPen(border, 2))
-        p.setBrush(Qt.NoBrush)
+        p.setBrush(Qt.NoBrush)  # ty: ignore[unresolved-attribute]
         p.drawRoundedRect(
             self.rect().adjusted(1, 1, -1, -1),
             8,
             8,
         )
 
-    def mousePressEvent(self, event) -> None:  # noqa: N802
+    @override
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Start dragging the split bar if the click is near it."""
         top_h = self.height() * self.split_ratio
         if abs(event.position().y() - top_h) < 12:
             self._dragging = True
 
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+    @override
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Drag the split bar or update the cursor."""
         if not self._dragging:
             top_h = self.height() * self.split_ratio
             if abs(event.position().y() - top_h) < 12:
-                self.setCursor(Qt.SplitVCursor)
+                self.setCursor(Qt.SplitVCursor)  # ty: ignore[unresolved-attribute]
             else:
-                self.setCursor(Qt.ArrowCursor)
+                self.setCursor(Qt.ArrowCursor)  # ty: ignore[unresolved-attribute]
             return
         ratio = event.position().y() / self.height()
         self.split_ratio = max(0.15, min(0.85, ratio))
         self.update()
         self.split_ratio_changed.emit(self.split_ratio)
 
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+    @override
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """End the split-bar drag."""
         self._dragging = False
 
@@ -373,10 +399,10 @@ class TimelineWidget(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self.duration = 0.0
-        self.trim_start = 0.0
-        self.trim_end = 0.0
-        self.position = 0.0
+        self.duration: float = 0.0
+        self.trim_start: float = 0.0
+        self.trim_end: float = 0.0
+        self.position: float = 0.0
         self.setFixedHeight(72)
         self.setMinimumWidth(200)
         self._dragging: str | None = None
@@ -384,7 +410,7 @@ class TimelineWidget(QWidget):
     def set_duration(self, dur: float) -> None:
         """Set the total video duration and reset trim handles."""
         self.duration = dur
-        self.trim_start = 0
+        self.trim_start = 0.0
         self.trim_end = dur
         self.update()
 
@@ -405,15 +431,16 @@ class TimelineWidget(QWidget):
     def _x2t(self, x: float) -> float:
         bar = self._bar()
         pct = (x - bar.left()) / bar.width()
-        return max(0, min(self.duration, pct * self.duration))
+        return max(0.0, min(self.duration, pct * self.duration))
 
-    def paintEvent(self, event) -> None:  # noqa: N802
+    @override
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         """Draw the timeline bar, trim region, handles, and playhead."""
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.Antialiasing)  # ty: ignore[unresolved-attribute]
         bar = self._bar()
 
-        p.setPen(Qt.NoPen)
+        p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
         p.setBrush(QColor("#0a0a1a"))
         p.drawRoundedRect(bar, 6, 6)
 
@@ -437,7 +464,7 @@ class TimelineWidget(QWidget):
             )
 
         phx = self._t2x(self.position)
-        p.setPen(QPen(Qt.white, 2))
+        p.setPen(QPen(Qt.white, 2))  # ty: ignore[unresolved-attribute]
         p.drawLine(
             QPointF(phx, bar.top()),
             QPointF(phx, bar.bottom()),
@@ -450,7 +477,7 @@ class TimelineWidget(QWidget):
         y = bar.bottom() + 4
         p.drawText(
             QRectF(bar.left(), y, 120, 18),
-            Qt.AlignLeft,
+            Qt.AlignLeft,  # ty: ignore[unresolved-attribute]
             self._fmt(self.trim_start),
         )
         dur_text = (
@@ -458,12 +485,12 @@ class TimelineWidget(QWidget):
         )
         p.drawText(
             QRectF(bar.left(), y, bar.width(), 18),
-            Qt.AlignCenter,
+            Qt.AlignCenter,  # ty: ignore[unresolved-attribute]
             dur_text,
         )
         p.drawText(
             QRectF(bar.right() - 120, y, 120, 18),
-            Qt.AlignRight,
+            Qt.AlignRight,  # ty: ignore[unresolved-attribute]
             self._fmt(self.trim_end),
         )
 
@@ -473,7 +500,8 @@ class TimelineWidget(QWidget):
         sec = s % 60
         return f"{m}:{sec:04.1f}"
 
-    def mousePressEvent(self, event) -> None:  # noqa: N802
+    @override
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Begin dragging a trim handle or seek to click position."""
         x = event.position().x()
         sx = self._t2x(self.trim_start)
@@ -485,7 +513,8 @@ class TimelineWidget(QWidget):
         elif self._bar().contains(event.position()):
             self.seek_requested.emit(self._x2t(x))
 
-    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+    @override
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """Adjust the trim range while dragging a handle."""
         if self._dragging is None:
             return
@@ -502,6 +531,7 @@ class TimelineWidget(QWidget):
         self.update()
         self.range_changed.emit(self.trim_start, self.trim_end)
 
-    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+    @override
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         """End the trim-handle drag."""
         self._dragging = None
