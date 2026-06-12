@@ -1,6 +1,6 @@
 [project]
 name = "trimmy"
-version = "0.3.0"
+version = "0.4.0"
 description = "Trimmy — vertical split crop video editor"
 requires-python = ">=3.10"
 dependencies = [
