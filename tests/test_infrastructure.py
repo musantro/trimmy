@@ -10,7 +10,7 @@ import pytest
 
 from trimmy.crop.domain.models import CropRect, CropSelection
 from trimmy.preferences.domain.models import Preferences
-from trimmy.preferences.infrastructure.json_repository import (
+from trimmy.preferences.infrastructure.json_preferences_repository import (
     JsonPreferencesRepository,
 )
 from trimmy.render.infrastructure import ffmpeg as ffmpeg_mod
@@ -18,7 +18,9 @@ from trimmy.render.infrastructure.ffmpeg import (
     FFmpegRenderingBackend,
     FFprobeVideoProber,
 )
-from trimmy.render.infrastructure.presets import InMemoryPresetRepository
+from trimmy.render.infrastructure.in_memory_preset_repository import (
+    InMemoryPresetRepository,
+)
 
 ALL_PLATFORMS = ["instagram", "tiktok", "twitter", "whatsapp", "telegram"]
 

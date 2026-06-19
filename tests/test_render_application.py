@@ -15,7 +15,9 @@ from trimmy.render.application.use_cases import (
 )
 from trimmy.render.domain.gateways import RenderingBackend, VideoProber
 from trimmy.render.domain.models import ProcessResult, VideoMetadata
-from trimmy.render.infrastructure.presets import InMemoryPresetRepository
+from trimmy.render.infrastructure.in_memory_preset_repository import (
+    InMemoryPresetRepository,
+)
 from trimmy.shared.compat import override
 from trimmy.trim.domain.models import TrimRange
 
