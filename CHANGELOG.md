@@ -1,3 +1,14 @@
+## v0.6.0 (2026-06-19)
+
+### Feat
+
+- add event bus and route rendering through start/stop commands
+
+### Refactor
+
+- **app**: drive the render flow through the event bus
+- restructure into editing/rendering bounded contexts
+
 ## v0.5.5 (2026-06-19)
 
 ### Refactor
