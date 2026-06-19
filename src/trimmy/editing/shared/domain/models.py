@@ -11,6 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from trimmy.shared.compat import override
+from trimmy.shared.domain.aggregate_root import AggregateRoot
+
 MIN_TRIM_GAP = 0.1
 
 
@@ -73,22 +76,53 @@ class CropRect:
         return self.w <= 0 or self.h <= 0
 
 
-@dataclass(frozen=True)
-class CropSelection:
-    """The pair of crop regions that compose the vertical output."""
+class CropSelection(AggregateRoot):
+    """
+    The pair of crop regions that compose the vertical output.
 
-    top: CropRect
-    bottom: CropRect
+    The crops are exposed through read-only properties: the selection is
+    effectively immutable like the other editing value objects, while the
+    :class:`AggregateRoot` base lets it record domain events.
+    """
+
+    def __init__(self, top: CropRect, bottom: CropRect) -> None:
+        super().__init__()
+        self._top = top
+        self._bottom = bottom
+
+    @property
+    def top(self) -> CropRect:
+        """Return the top crop region."""
+        return self._top
+
+    @property
+    def bottom(self) -> CropRect:
+        """Return the bottom crop region."""
+        return self._bottom
 
     def get(self, position: CropPosition) -> CropRect:
         """Return the crop rectangle for *position*."""
-        return self.top if position is CropPosition.TOP else self.bottom
+        return self._top if position is CropPosition.TOP else self._bottom
 
     def replace(self, position: CropPosition, rect: CropRect) -> CropSelection:
         """Return a copy with *position* set to *rect*."""
         if position is CropPosition.TOP:
-            return CropSelection(top=rect, bottom=self.bottom)
-        return CropSelection(top=self.top, bottom=rect)
+            return CropSelection(top=rect, bottom=self._bottom)
+        return CropSelection(top=self._top, bottom=rect)
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Return whether *other* holds the same top and bottom crops."""
+        return (
+            isinstance(other, CropSelection)
+            and self._top == other._top
+            and self._bottom == other._bottom
+        )
+
+    @override
+    def __hash__(self) -> int:
+        """Return a hash consistent with value equality."""
+        return hash((self._top, self._bottom))
 
 
 @dataclass(frozen=True)
