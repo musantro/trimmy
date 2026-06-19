@@ -6,20 +6,20 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from tests.mothers import make_spec
-from trimmy.render.application.use_cases import (
+from trimmy.editing.shared.domain.models import TrimRange
+from trimmy.rendering.application.use_cases import (
     ProbeVideoRequest,
     ProbeVideoUseCase,
     RenderJobRequest,
     RenderSegmentsUseCase,
     RenderVideoUseCase,
 )
-from trimmy.render.domain.gateways import RenderingBackend, VideoProber
-from trimmy.render.domain.models import ProcessResult, VideoMetadata
-from trimmy.render.infrastructure.in_memory_preset_repository import (
+from trimmy.rendering.domain.gateways import RenderingBackend, VideoProber
+from trimmy.rendering.domain.models import ProcessResult, VideoMetadata
+from trimmy.rendering.infrastructure.in_memory_preset_repository import (
     InMemoryPresetRepository,
 )
 from trimmy.shared.compat import override
-from trimmy.trim.domain.models import TrimRange
 
 
 class FakeBackend(RenderingBackend):

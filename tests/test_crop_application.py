@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from tests.mothers import make_crop, make_selection, make_source
-from trimmy.crop.application.use_cases import (
+from trimmy.editing.crop.application.use_cases import (
     InitializeCropsRequest,
     InitializeCropsUseCase,
     MoveCropRequest,
@@ -13,11 +13,11 @@ from trimmy.crop.application.use_cases import (
     SynchronizeAspectsRequest,
     SynchronizeAspectsUseCase,
 )
-from trimmy.crop.domain.models import CropHandle, CropPosition, CropSelection
-from trimmy.crop.domain.services import CropAspects
-from trimmy.crop.infrastructure.in_memory_crop_selection_repository import (
+from trimmy.editing.crop.domain.services import CropAspects
+from trimmy.editing.crop.infrastructure.in_memory_crop_selection_repository import (
     InMemoryCropSelectionRepository,
 )
+from trimmy.editing.shared.domain.models import CropHandle, CropPosition, CropSelection
 
 
 def test_initialize_crops_use_case():
