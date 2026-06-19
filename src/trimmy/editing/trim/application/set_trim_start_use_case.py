@@ -1,4 +1,4 @@
-"""Use cases for adjusting the trim range."""
+"""Use case for adjusting the start of the trim range."""
 
 from __future__ import annotations
 
@@ -22,20 +22,3 @@ class SetTrimStartUseCase(UseCase[SetTrimStartRequest, TrimRange]):
     def set_start(self, request: SetTrimStartRequest) -> TrimRange:
         """Return the trim range with its start updated."""
         return request.current.with_start(request.value)
-
-
-@dataclass(frozen=True)
-class SetTrimEndRequest:
-    """Request to move the end of *current* to *value*."""
-
-    current: TrimRange
-    value: float
-    total: float
-
-
-class SetTrimEndUseCase(UseCase[SetTrimEndRequest, TrimRange]):
-    """Moves the trim end, keeping the range valid."""
-
-    def set_end(self, request: SetTrimEndRequest) -> TrimRange:
-        """Return the trim range with its end updated."""
-        return request.current.with_end(request.value, request.total)

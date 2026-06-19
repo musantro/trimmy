@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from trimmy.app.preferences.application.use_cases import (
+from trimmy.app.preferences.application.load_preferences_use_case import (
     LoadPreferencesUseCase,
+)
+from trimmy.app.preferences.application.save_preferences_use_case import (
     SavePreferencesUseCase,
 )
 from trimmy.app.preferences.domain.models import Preferences

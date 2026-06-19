@@ -48,8 +48,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from trimmy.app.preferences.application.use_cases import (
+from trimmy.app.preferences.application.load_preferences_use_case import (
     LoadPreferencesUseCase,
+)
+from trimmy.app.preferences.application.save_preferences_use_case import (
     SavePreferencesUseCase,
 )
 from trimmy.app.preferences.domain.models import Preferences
@@ -63,18 +65,24 @@ from trimmy.app.widgets import (
 )
 from trimmy.editing.crop.domain.services import AspectRatioCalculator
 from trimmy.editing.shared.domain.models import CropSelection
-from trimmy.editing.trim.application.use_cases import (
+from trimmy.editing.trim.application.set_trim_end_use_case import (
     SetTrimEndRequest,
     SetTrimEndUseCase,
+)
+from trimmy.editing.trim.application.set_trim_start_use_case import (
     SetTrimStartRequest,
     SetTrimStartUseCase,
 )
 from trimmy.rendering.application.coordinator import RenderCoordinator
-from trimmy.rendering.application.use_cases import (
+from trimmy.rendering.application.plan_segments_use_case import (
     PlanSegmentsRequest,
     PlanSegmentsUseCase,
+)
+from trimmy.rendering.application.probe_video_use_case import (
     ProbeVideoRequest,
     ProbeVideoUseCase,
+)
+from trimmy.rendering.application.render_segments_use_case import (
     RenderSegmentsUseCase,
 )
 from trimmy.rendering.domain.messages import (

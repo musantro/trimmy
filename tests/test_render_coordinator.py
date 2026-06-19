@@ -8,7 +8,7 @@ from pathlib import Path
 from tests.mothers import make_spec
 from trimmy.editing.shared.domain.models import TrimRange
 from trimmy.rendering.application.coordinator import RenderCoordinator
-from trimmy.rendering.application.use_cases import RenderSegmentsUseCase
+from trimmy.rendering.application.render_segments_use_case import RenderSegmentsUseCase
 from trimmy.rendering.domain.gateways import RenderingBackend
 from trimmy.rendering.domain.messages import (
     RenderCompleted,
