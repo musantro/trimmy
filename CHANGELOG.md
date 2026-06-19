@@ -1,3 +1,9 @@
+## v0.5.5 (2026-06-19)
+
+### Refactor
+
+- give each use case a domain verb instead of execute
+
 ## v0.5.4 (2026-06-19)
 
 ### Refactor
