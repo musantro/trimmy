@@ -28,8 +28,11 @@ jobs:
       - name: Bump version
         id: bump
         run: |
-          if uvx --from commitizen cz bump --yes --changelog; then
+          # --changelog-to-stdout writes only the new version's changelog
+          # section to stdout, which we keep as the GitHub Release notes.
+          if uvx --from commitizen cz bump --yes --changelog --changelog-to-stdout --git-output-to-stderr > release-notes.md; then
             echo "bumped=true" >> $GITHUB_OUTPUT
+            echo "version=$(uvx --from commitizen cz version --project)" >> $GITHUB_OUTPUT
           else
             rc=$?
             if [ $rc -eq 21 ]; then
@@ -53,3 +56,13 @@ jobs:
       - name: Publish to PyPI
         if: steps.bump.outputs.bumped == 'true'
         run: uv publish
+
+      - name: Create GitHub Release
+        if: steps.bump.outputs.bumped == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ steps.bump.outputs.version }}" \
+            --title "v${{ steps.bump.outputs.version }}" \
+            --notes-file release-notes.md \
+            dist/*
