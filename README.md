@@ -63,8 +63,8 @@ Each platform offers a **Max** mode (highest quality, slower encode) and an **Op
 
 ## Development
 
-Trimmy is built with [PySide6](https://doc.qt.io/qtforpython/) and organised with
-domain-driven design and vertical slicing. To work on it from source:
+Trimmy is built with [PySide6](https://doc.qt.io/qtforpython/). To work on it
+from source:
 
 ```bash
 git clone https://github.com/musantro/trimmy.git
@@ -72,11 +72,6 @@ cd trimmy
 uv sync
 uv run python -m trimmy
 ```
-
-Each module under `trimmy/` is a bounded context split into the three classic
-layers — `domain/`, `application/`, and `infrastructure/` — with a `shared/`
-kernel and a PySide6 `presentation/` layer. The test-coverage gate is **100%**,
-enforced on the domain and application layers of every module.
 
 See [CHANGELOG.md](https://github.com/musantro/trimmy/blob/master/CHANGELOG.md)
 for release history.
