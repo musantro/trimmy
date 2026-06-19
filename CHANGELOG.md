@@ -1,3 +1,11 @@
+## v0.5.2 (2026-06-19)
+
+### Fix
+
+- create GitHub Releases with changelog notes on each version bump
+- drop internal architecture details from PyPI README
+- include PyPI-friendly README and project metadata in package
+
 ## v0.5.1 (2026-06-12)
 
 ### Refactor
