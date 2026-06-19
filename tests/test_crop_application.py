@@ -15,7 +15,7 @@ from trimmy.crop.application.use_cases import (
 )
 from trimmy.crop.domain.models import CropHandle, CropPosition, CropSelection
 from trimmy.crop.domain.services import CropAspects
-from trimmy.crop.infrastructure.repositories import (
+from trimmy.crop.infrastructure.in_memory_repository import (
     InMemoryCropSelectionRepository,
 )
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from trimmy.crop.domain.crop_selection_repository import CropSelectionRepository
 from trimmy.crop.domain.models import (
     CropHandle,
     CropPosition,
@@ -11,7 +12,6 @@ from trimmy.crop.domain.models import (
     CropSelection,
     SourceSize,
 )
-from trimmy.crop.domain.repositories import CropSelectionRepository
 from trimmy.crop.domain.services import (
     AspectRatioSynchronizer,
     CropAspects,

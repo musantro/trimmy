@@ -14,7 +14,7 @@ from trimmy.render.domain.models import (
     RenderSpec,
     VideoMetadata,
 )
-from trimmy.render.domain.repositories import PresetRepository
+from trimmy.render.domain.preset_repository import PresetRepository
 from trimmy.render.domain.services import (
     BitratePlanner,
     CodecArgsFactory,

@@ -39,7 +39,7 @@ from trimmy.crop.domain.models import (
     SourceSize,
 )
 from trimmy.crop.domain.services import CropAspects
-from trimmy.crop.infrastructure.repositories import (
+from trimmy.crop.infrastructure.in_memory_repository import (
     InMemoryCropSelectionRepository,
 )
 from trimmy.trim.application.use_cases import (
