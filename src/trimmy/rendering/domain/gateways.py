@@ -19,6 +19,11 @@ class RenderingBackend(ABC):
         ...
 
     @abstractmethod
+    def cancel(self) -> None:
+        """Request cancellation of the in-flight encode."""
+        ...
+
+    @abstractmethod
     def detect_gpu_encoder(self) -> str | None:
         """Return the available hardware encoder name, or ``None``."""
         ...
