@@ -114,13 +114,13 @@ class CropWidget(QWidget):
 
     def init_crops(self) -> None:
         """Reset crop rectangles to default positions."""
-        self._initialize.execute(InitializeCropsRequest(self.source))
+        self._initialize.initialize(InitializeCropsRequest(self.source))
         self.update()
 
     def set_crop_aspects(self, top_aspect: float, bottom_aspect: float) -> None:
         """Set aspect ratios and re-sync both crop rectangles."""
         self.aspects = CropAspects(top=top_aspect, bottom=bottom_aspect)
-        self._synchronize.execute(
+        self._synchronize.synchronize(
             SynchronizeAspectsRequest(self.aspects, self.source),
         )
         self.update()
@@ -272,7 +272,7 @@ class CropWidget(QWidget):
         dy = src.y() - self._drag_start.y()
 
         if self._drag_moving:
-            self._move.execute(
+            self._move.move(
                 MoveCropRequest(
                     self._drag_position,
                     self._drag_origin,
@@ -287,7 +287,7 @@ class CropWidget(QWidget):
                 if self._drag_position is CropPosition.TOP
                 else self.aspects.bottom
             )
-            self._resize.execute(
+            self._resize.resize(
                 ResizeCropRequest(
                     self._drag_position,
                     self._drag_handle,
@@ -560,13 +560,13 @@ class TimelineWidget(QWidget):
             return
         t = self._x2t(event.position().x())
         if self._dragging == "start":
-            updated = self._set_start.execute(
+            updated = self._set_start.set_start(
                 SetTrimStartRequest(self.trim_range, t),
             )
             self.trim_start = updated.start
             self.seek_requested.emit(self.trim_start)
         else:
-            updated = self._set_end.execute(
+            updated = self._set_end.set_end(
                 SetTrimEndRequest(self.trim_range, t, self.duration),
             )
             self.trim_end = updated.end

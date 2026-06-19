@@ -23,7 +23,6 @@ from trimmy.render.domain.services import (
     FilterGraphBuilder,
     FpsPlanner,
 )
-from trimmy.shared.compat import override
 from trimmy.shared.domain.use_case import UseCase
 from trimmy.trim.domain.models import TrimRange
 from trimmy.trim.domain.services import SegmentPlanner
@@ -49,8 +48,7 @@ class ProbeVideoUseCase(UseCase[ProbeVideoRequest, VideoMetadata]):
     def __init__(self, prober: VideoProber) -> None:
         self._prober = prober
 
-    @override
-    def execute(self, request: ProbeVideoRequest) -> VideoMetadata:
+    def probe(self, request: ProbeVideoRequest) -> VideoMetadata:
         """Return the probed metadata for the requested path."""
         return self._prober.probe(request.path)
 
@@ -72,8 +70,7 @@ class RenderVideoUseCase(UseCase[RenderSpec, RenderOutcome]):
         self._codecs = CodecArgsFactory()
         self._commands = CommandBuilder()
 
-    @override
-    def execute(self, request: RenderSpec) -> RenderOutcome:
+    def render(self, request: RenderSpec) -> RenderOutcome:
         """Render *request* and return the outcome."""
         preset = self._presets.encoder_preset(request.platform, request.quality)
         dimensions = self._dimensions.plan(
@@ -167,12 +164,11 @@ class RenderSegmentsUseCase(UseCase[RenderJobRequest, RenderJobResult]):
             backend,
         )
 
-    @override
-    def execute(self, request: RenderJobRequest) -> RenderJobResult:
+    def render(self, request: RenderJobRequest) -> RenderJobResult:
         """Plan the segments, render each and return the aggregate result."""
         segments = self._planner.plan(request.spec.trim, request.max_duration)
         if len(segments) == 1:
-            outcome = self._render.execute(request.spec)
+            outcome = self._render.render(request.spec)
             return RenderJobResult(outcomes=(outcome,), multipart=False)
 
         outcomes: list[RenderOutcome] = []
@@ -189,7 +185,7 @@ class RenderSegmentsUseCase(UseCase[RenderJobRequest, RenderJobResult]):
                 output_path=seg_path,
             )
             outcome = replace(
-                self._render.execute(seg_spec),
+                self._render.render(seg_spec),
                 index=segment.index,
                 total=segment.total,
                 path=str(seg_path),

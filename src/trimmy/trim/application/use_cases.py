@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trimmy.shared.compat import override
 from trimmy.shared.domain.use_case import UseCase
 from trimmy.trim.domain.models import Segment, TrimRange
 from trimmy.trim.domain.services import SegmentPlanner
@@ -21,8 +20,7 @@ class SetTrimStartRequest:
 class SetTrimStartUseCase(UseCase[SetTrimStartRequest, TrimRange]):
     """Moves the trim start, keeping the range valid."""
 
-    @override
-    def execute(self, request: SetTrimStartRequest) -> TrimRange:
+    def set_start(self, request: SetTrimStartRequest) -> TrimRange:
         """Return the trim range with its start updated."""
         return request.current.with_start(request.value)
 
@@ -39,8 +37,7 @@ class SetTrimEndRequest:
 class SetTrimEndUseCase(UseCase[SetTrimEndRequest, TrimRange]):
     """Moves the trim end, keeping the range valid."""
 
-    @override
-    def execute(self, request: SetTrimEndRequest) -> TrimRange:
+    def set_end(self, request: SetTrimEndRequest) -> TrimRange:
         """Return the trim range with its end updated."""
         return request.current.with_end(request.value, request.total)
 
@@ -59,7 +56,6 @@ class PlanSegmentsUseCase(UseCase[PlanSegmentsRequest, list[Segment]]):
     def __init__(self, planner: SegmentPlanner | None = None) -> None:
         self._planner = planner or SegmentPlanner()
 
-    @override
-    def execute(self, request: PlanSegmentsRequest) -> list[Segment]:
+    def plan(self, request: PlanSegmentsRequest) -> list[Segment]:
         """Return the planned segments for the request."""
         return self._planner.plan(request.trim_range, request.max_duration)
