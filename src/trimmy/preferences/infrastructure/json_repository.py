@@ -10,7 +10,7 @@ from typing import Any
 
 from trimmy.crop.domain.models import CropRect, CropSelection
 from trimmy.preferences.domain.models import Preferences
-from trimmy.preferences.domain.repositories import PreferencesRepository
+from trimmy.preferences.domain.preferences_repository import PreferencesRepository
 from trimmy.shared.compat import override
 
 

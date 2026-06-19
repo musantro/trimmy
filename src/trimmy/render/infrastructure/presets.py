@@ -7,7 +7,7 @@ from trimmy.render.domain.models import (
     PlatformDisplayInfo,
     PlatformFormat,
 )
-from trimmy.render.domain.repositories import PresetRepository
+from trimmy.render.domain.preset_repository import PresetRepository
 from trimmy.shared.compat import override
 
 _PRESETS: dict[str, dict[str, EncoderPreset]] = {
