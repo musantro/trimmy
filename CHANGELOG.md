@@ -1,3 +1,10 @@
+## v0.5.4 (2026-06-19)
+
+### Refactor
+
+- name infrastructure repositories after their domain ports
+- give each repository its own module file
+
 ## v0.5.3 (2026-06-19)
 
 ### Refactor
