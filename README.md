@@ -43,11 +43,15 @@ Then:
 
 ### Keyboard shortcuts
 
-| Key | Action          |
-|-----|-----------------|
-| K   | Play / Pause    |
-| J   | Seek back 5s    |
-| L   | Seek forward 5s |
+| Key | Action                     |
+|-----|----------------------------|
+| K   | Play / Pause               |
+| J   | Seek backward 5s           |
+| L   | Seek forward 5s            |
+| Q   | Set trim start to playhead |
+| E   | Set trim end to playhead   |
+| M   | Toggle mute                |
+| ?   | Show keyboard shortcuts    |
 
 ## Platform presets
 
