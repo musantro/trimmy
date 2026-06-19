@@ -1,3 +1,9 @@
+## v0.5.3 (2026-06-19)
+
+### Refactor
+
+- adopt src layout for packaged application
+
 ## v0.5.2 (2026-06-19)
 
 ### Fix
