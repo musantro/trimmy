@@ -58,9 +58,9 @@ addopts = "--cov=trimmy --cov-report=term-missing --cov-fail-under=100"
 # are omitted by configuration, so the 100% gate measures business logic
 # exclusively.
 omit = [
-    "trimmy/__main__.py",
-    "trimmy/presentation/*",
-    "trimmy/*/infrastructure/*",
+    "src/trimmy/__main__.py",
+    "src/trimmy/presentation/*",
+    "src/trimmy/*/infrastructure/*",
 ]
 
 [tool.coverage.report]
