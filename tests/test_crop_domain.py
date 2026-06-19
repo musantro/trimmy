@@ -70,6 +70,19 @@ def test_crop_selection_get_and_replace():
     assert replaced2.top is top
 
 
+def test_crop_selection_value_equality_and_hash():
+    top = make_crop(0, 0, 10, 10)
+    bottom = make_crop(0, 50, 10, 10)
+    one = CropSelection(top=top, bottom=bottom)
+    same = CropSelection(top=top, bottom=bottom)
+    other = CropSelection(top=top, bottom=make_crop(1, 1, 5, 5))
+
+    assert one == same
+    assert hash(one) == hash(same)
+    assert one != other
+    assert one != "not a selection"
+
+
 # ---- specifications ----
 
 

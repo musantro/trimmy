@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from trimmy.editing.shared.domain.models import CropSelection, TrimRange
+from trimmy.shared.domain.aggregate_root import AggregateRoot
 
 CANCELLED_MESSAGE = "Cancelled"
 
@@ -210,37 +211,59 @@ class RenderOutcome:
         return self.error is None
 
 
-@dataclass(frozen=True)
-class RenderJobResult:
-    """The aggregate result of a (possibly multi-part) render job."""
+class RenderJobResult(AggregateRoot):
+    """
+    The aggregate result of a (possibly multi-part) render job.
 
-    outcomes: tuple[RenderOutcome, ...]
-    multipart: bool
+    The outcomes are exposed through read-only properties, keeping the value
+    semantics of the other rendering models, while the :class:`AggregateRoot`
+    base lets the job record domain events.
+    """
+
+    def __init__(
+        self,
+        outcomes: tuple[RenderOutcome, ...],
+        *,
+        multipart: bool,
+    ) -> None:
+        super().__init__()
+        self._outcomes = outcomes
+        self._multipart = multipart
+
+    @property
+    def outcomes(self) -> tuple[RenderOutcome, ...]:
+        """Return the per-part outcomes of the job."""
+        return self._outcomes
+
+    @property
+    def multipart(self) -> bool:
+        """Return whether the job was split into multiple parts."""
+        return self._multipart
 
     @property
     def first(self) -> RenderOutcome:
         """Return the first outcome of the job."""
-        return self.outcomes[0]
+        return self._outcomes[0]
 
     @property
     def parts(self) -> int:
         """Return how many parts the job produced."""
-        return len(self.outcomes)
+        return len(self._outcomes)
 
     @property
     def is_cancelled(self) -> bool:
         """Return whether any part was cancelled."""
-        return any(outcome.is_cancelled for outcome in self.outcomes)
+        return any(outcome.is_cancelled for outcome in self._outcomes)
 
     @property
     def failures(self) -> tuple[RenderOutcome, ...]:
         """Return the parts that failed for a non-cancel reason."""
-        return tuple(o for o in self.outcomes if o.is_failed)
+        return tuple(o for o in self._outcomes if o.is_failed)
 
     @property
     def total_size_mb(self) -> float:
         """Return the combined size of all successful parts."""
         return round(
-            sum(o.size_mb for o in self.outcomes if o.size_mb is not None),
+            sum(o.size_mb for o in self._outcomes if o.size_mb is not None),
             2,
         )
