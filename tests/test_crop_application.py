@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 from tests.mothers import make_crop, make_selection, make_source
-from trimmy.editing.crop.application.use_cases import (
+from trimmy.editing.crop.application.initialize_crops_use_case import (
     InitializeCropsRequest,
     InitializeCropsUseCase,
+)
+from trimmy.editing.crop.application.move_crop_use_case import (
     MoveCropRequest,
     MoveCropUseCase,
+)
+from trimmy.editing.crop.application.resize_crop_use_case import (
     ResizeCropRequest,
     ResizeCropUseCase,
+)
+from trimmy.editing.crop.application.synchronize_aspects_use_case import (
     SynchronizeAspectsRequest,
     SynchronizeAspectsUseCase,
 )
