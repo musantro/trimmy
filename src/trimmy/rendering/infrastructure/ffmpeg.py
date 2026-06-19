@@ -79,6 +79,7 @@ class FFmpegRenderingBackend(RenderingBackend):
         """Return whether cancellation has been requested."""
         return self._cancelled
 
+    @override
     def cancel(self) -> None:
         """Signal cancellation and kill any running ffmpeg process."""
         with self._lock:
