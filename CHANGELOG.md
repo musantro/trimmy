@@ -1,3 +1,9 @@
+## v0.7.0 (2026-06-19)
+
+### Feat
+
+- **domain**: add AggregateRoot base and adopt it for the aggregates
+
 ## v0.6.0 (2026-06-19)
 
 ### Feat
