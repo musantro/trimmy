@@ -210,7 +210,7 @@ class RenderThread(QThread):
             max_duration=self._max_duration,
             on_progress=self._emit_progress,
         )
-        result = self._use_case.execute(request)
+        result = self._use_case.render(request)
         self.finished.emit(result)
 
 
@@ -236,7 +236,7 @@ class MainWindow(QMainWindow):
         self._source_path: Path | None = None
         self.current_frame: QImage | None = None
 
-        self._prefs = LoadPreferencesUseCase(self._prefs_repository).execute()
+        self._prefs = LoadPreferencesUseCase(self._prefs_repository).load()
         self.selected_platform: str = self._prefs.selected_platform
         self.selected_format: str = self._prefs.selected_format
         self.selected_quality: str = self._prefs.selected_quality
@@ -451,7 +451,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            info = self._probe.execute(ProbeVideoRequest(path))
+            info = self._probe.probe(ProbeVideoRequest(path))
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(
                 self,
@@ -671,7 +671,7 @@ class MainWindow(QMainWindow):
             dur_text = self._fmt_max_duration(fmt.max_duration)
             text += f"\nFormat: {fmt.label} (max {dur_text})"
             if self.video_info:
-                segments = self._plan_segments.execute(
+                segments = self._plan_segments.plan(
                     PlanSegmentsRequest(
                         self.timeline.trim_range,
                         fmt.max_duration,
@@ -820,7 +820,7 @@ class MainWindow(QMainWindow):
             volume=self._volume,
             crops=self.crop_widget.selection,
         )
-        SavePreferencesUseCase(self._prefs_repository).execute(preferences)
+        SavePreferencesUseCase(self._prefs_repository).save(preferences)
 
     def _restore_crops(self) -> None:
         saved = self._prefs.crops
@@ -862,7 +862,7 @@ class MainWindow(QMainWindow):
         if not self.video_info:
             return
         pos = self.player.position() / 1000.0
-        updated = SetTrimStartUseCase().execute(
+        updated = SetTrimStartUseCase().set_start(
             SetTrimStartRequest(self.timeline.trim_range, pos),
         )
         self.timeline.apply_range(updated)
@@ -871,7 +871,7 @@ class MainWindow(QMainWindow):
         if not self.video_info:
             return
         pos = self.player.position() / 1000.0
-        updated = SetTrimEndUseCase().execute(
+        updated = SetTrimEndUseCase().set_end(
             SetTrimEndRequest(
                 self.timeline.trim_range,
                 pos,

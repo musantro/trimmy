@@ -19,7 +19,6 @@ from trimmy.crop.domain.services import (
     CropResizer,
     DefaultCropFactory,
 )
-from trimmy.shared.compat import override
 from trimmy.shared.domain.use_case import UseCase
 
 
@@ -41,8 +40,7 @@ class InitializeCropsUseCase(UseCase[InitializeCropsRequest, CropSelection]):
         self._repository = repository
         self._factory = factory or DefaultCropFactory()
 
-    @override
-    def execute(self, request: InitializeCropsRequest) -> CropSelection:
+    def initialize(self, request: InitializeCropsRequest) -> CropSelection:
         """Create, persist and return the default crop selection."""
         selection = self._factory.create(request.source)
         self._repository.save(selection)
@@ -70,8 +68,7 @@ class SynchronizeAspectsUseCase(
         self._repository = repository
         self._synchronizer = synchronizer or AspectRatioSynchronizer()
 
-    @override
-    def execute(self, request: SynchronizeAspectsRequest) -> CropSelection:
+    def synchronize(self, request: SynchronizeAspectsRequest) -> CropSelection:
         """Synchronize both crops, persist and return the new selection."""
         current = self._repository.get()
         selection = CropSelection(
@@ -112,8 +109,7 @@ class MoveCropUseCase(UseCase[MoveCropRequest, CropSelection]):
         self._repository = repository
         self._mover = mover or CropMover()
 
-    @override
-    def execute(self, request: MoveCropRequest) -> CropSelection:
+    def move(self, request: MoveCropRequest) -> CropSelection:
         """Move the requested crop, persist and return the selection."""
         moved = self._mover.move(
             request.origin,
@@ -149,8 +145,7 @@ class ResizeCropUseCase(UseCase[ResizeCropRequest, CropSelection]):
         self._repository = repository
         self._resizer = resizer or CropResizer()
 
-    @override
-    def execute(self, request: ResizeCropRequest) -> CropSelection:
+    def resize(self, request: ResizeCropRequest) -> CropSelection:
         """Resize the requested crop, persist and return the selection."""
         resized = self._resizer.resize(
             request.origin,
