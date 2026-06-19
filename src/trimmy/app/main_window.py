@@ -1,4 +1,4 @@
-"""Main application window, render thread, and drop overlay."""
+"""Main application window, render worker, and drop overlay."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ if sys.version_info >= (3, 12):
 else:
     from typing_extensions import override
 
-from PySide6.QtCore import Qt, QThread, QUrl, Signal
+from PySide6.QtCore import Qt, QThread, QUrl
 from PySide6.QtGui import (
     QCloseEvent,
     QColor,
@@ -69,13 +69,19 @@ from trimmy.editing.trim.application.use_cases import (
     SetTrimStartRequest,
     SetTrimStartUseCase,
 )
+from trimmy.rendering.application.coordinator import RenderCoordinator
 from trimmy.rendering.application.use_cases import (
     PlanSegmentsRequest,
     PlanSegmentsUseCase,
     ProbeVideoRequest,
     ProbeVideoUseCase,
-    RenderJobRequest,
     RenderSegmentsUseCase,
+)
+from trimmy.rendering.domain.messages import (
+    RenderCompleted,
+    RenderProgressed,
+    StartRendering,
+    StopRendering,
 )
 from trimmy.rendering.domain.models import (
     PlatformFormat,
@@ -83,6 +89,7 @@ from trimmy.rendering.domain.models import (
     RenderSpec,
     VideoMetadata,
 )
+from trimmy.rendering.domain.preset_repository import PresetRepository
 from trimmy.rendering.domain.services import FormatSelector
 from trimmy.rendering.infrastructure.ffmpeg import (
     FFmpegRenderingBackend,
@@ -91,6 +98,9 @@ from trimmy.rendering.infrastructure.ffmpeg import (
 from trimmy.rendering.infrastructure.in_memory_preset_repository import (
     InMemoryPresetRepository,
 )
+from trimmy.shared.domain.event_bus import EventBus
+from trimmy.shared.infrastructure.in_memory_event_bus import InMemoryEventBus
+from trimmy.shared.infrastructure.pyside_event_bus import PySideEventBus
 
 logger = logging.getLogger(__name__)
 
@@ -177,41 +187,41 @@ QMenu::item:selected { background: #1a4a80; }
 """
 
 
-class RenderThread(QThread):
-    """Background thread that runs the render job use case."""
+class RenderWorker(QThread):
+    """
+    Runs the render pipeline off the GUI thread, bridging events to *bus*.
 
-    finished = Signal(object)
-    progress = Signal(int, int)
+    The blocking work is driven by the same :class:`RenderCoordinator` the
+    rendering context uses everywhere: the worker owns a private synchronous
+    bus, lets the coordinator handle the ``StartRendering`` command on this
+    thread, and forwards the resulting events onto the GUI bus (whose queued
+    Qt signal hops them back to the GUI thread).
+    """
 
     def __init__(
         self,
-        use_case: RenderSegmentsUseCase,
-        backend: FFmpegRenderingBackend,
-        spec: RenderSpec,
-        max_duration: int | None,
+        bus: EventBus,
+        presets: PresetRepository,
+        command: StartRendering,
     ) -> None:
         super().__init__()
-        self._use_case = use_case
-        self._backend = backend
-        self._spec = spec
-        self._max_duration = max_duration
+        self._bus = bus
+        self._presets = presets
+        self._command = command
+        self._backend = FFmpegRenderingBackend()
 
     def stop(self) -> None:
         """Request cancellation of the running render."""
         self._backend.cancel()
 
-    def _emit_progress(self, current: int, total: int) -> None:
-        self.progress.emit(current, total)
-
     @override
     def run(self) -> None:  # noqa: D102
-        request = RenderJobRequest(
-            spec=self._spec,
-            max_duration=self._max_duration,
-            on_progress=self._emit_progress,
-        )
-        result = self._use_case.render(request)
-        self.finished.emit(result)
+        local = InMemoryEventBus()
+        use_case = RenderSegmentsUseCase(self._presets, self._backend)
+        RenderCoordinator(local, use_case, self._backend)
+        local.subscribe(RenderProgressed, self._bus.publish)
+        local.subscribe(RenderCompleted, self._bus.publish)
+        local.publish(self._command)
 
 
 class MainWindow(QMainWindow):
@@ -242,7 +252,14 @@ class MainWindow(QMainWindow):
         self.selected_quality: str = self._prefs.selected_quality
         self.split_ratio: float = self._prefs.split_ratio
         self._waiting_first_frame: bool = False
-        self._render_thread: RenderThread | None = None
+
+        self._bus = PySideEventBus(self)
+        self._bus.subscribe(StartRendering, self._on_start_rendering)
+        self._bus.subscribe(StopRendering, self._on_stop_rendering)
+        self._bus.subscribe(RenderProgressed, self._on_render_progressed)
+        self._bus.subscribe(RenderCompleted, self._on_render_completed)
+        self._render_worker: RenderWorker | None = None
+        self._render_out_path: str | None = None
 
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
@@ -724,32 +741,27 @@ class MainWindow(QMainWindow):
             quality=self.selected_quality,
             source_fps=self.video_info.fps,
         )
-        backend = FFmpegRenderingBackend()
-        use_case = RenderSegmentsUseCase(self._presets, backend)
-        self._render_thread = RenderThread(
-            use_case,
-            backend,
-            spec,
-            max_duration,
-        )
-        self._render_thread.progress.connect(
-            self._on_render_progress,
-        )
-        self._render_thread.finished.connect(
-            lambda r: self._on_render_done(r, out_path),
-        )
-        self._render_thread.start()
+        self._render_out_path = out_path
+        self._bus.publish(StartRendering(spec, max_duration))
 
-    def _on_render_progress(self, current: int, total: int) -> None:
+    def _on_start_rendering(self, command: StartRendering) -> None:
+        """Launch the render worker for *command* off the GUI thread."""
+        self._render_worker = RenderWorker(self._bus, self._presets, command)
+        self._render_worker.start()
+
+    def _on_stop_rendering(self, _command: StopRendering) -> None:
+        """Cancel the in-flight render, if any."""
+        if self._render_worker is not None and self._render_worker.isRunning():
+            self._render_worker.stop()
+
+    def _on_render_progressed(self, event: RenderProgressed) -> None:
         self.status_label.setText(
-            f"Rendering part {current} of {total}...",
+            f"Rendering part {event.current} of {event.total}...",
         )
 
-    def _on_render_done(
-        self,
-        result: RenderJobResult,
-        out_path: str,
-    ) -> None:
+    def _on_render_completed(self, event: RenderCompleted) -> None:
+        result = event.result
+        out_path = self._render_out_path or ""
         self.render_btn.setEnabled(True)  # noqa: FBT003
         self.stop_btn.setVisible(False)  # noqa: FBT003
 
@@ -797,16 +809,14 @@ class MainWindow(QMainWindow):
         )
 
     def _stop_render(self) -> None:
-        if self._render_thread is not None and self._render_thread.isRunning():
-            self._render_thread.stop()
+        self._bus.publish(StopRendering())
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
-        """Shut down the render thread and save config on exit."""
-        if self._render_thread is not None and self._render_thread.isRunning():
-            self._render_thread.finished.disconnect()
-            self._render_thread.stop()
-            self._render_thread.wait()
+        """Shut down the render worker and save config on exit."""
+        if self._render_worker is not None and self._render_worker.isRunning():
+            self._render_worker.stop()
+            self._render_worker.wait()
         self.player.stop()
         self._save_config()
         super().closeEvent(event)
