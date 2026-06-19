@@ -25,7 +25,9 @@ from trimmy.render.domain.specifications import (
     FpsCapRequiredSpecification,
     RequiresDynamicBitrateSpecification,
 )
-from trimmy.render.infrastructure.presets import InMemoryPresetRepository
+from trimmy.render.infrastructure.in_memory_preset_repository import (
+    InMemoryPresetRepository,
+)
 from trimmy.trim.domain.models import TrimRange
 
 # ---- models ----
