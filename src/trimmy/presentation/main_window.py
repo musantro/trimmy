@@ -55,7 +55,7 @@ from trimmy.preferences.application.use_cases import (
     SavePreferencesUseCase,
 )
 from trimmy.preferences.domain.models import Preferences
-from trimmy.preferences.infrastructure.json_repository import (
+from trimmy.preferences.infrastructure.json_preferences_repository import (
     JsonPreferencesRepository,
 )
 from trimmy.presentation.widgets import (
@@ -80,7 +80,9 @@ from trimmy.render.infrastructure.ffmpeg import (
     FFmpegRenderingBackend,
     FFprobeVideoProber,
 )
-from trimmy.render.infrastructure.presets import InMemoryPresetRepository
+from trimmy.render.infrastructure.in_memory_preset_repository import (
+    InMemoryPresetRepository,
+)
 from trimmy.trim.application.use_cases import (
     PlanSegmentsRequest,
     PlanSegmentsUseCase,
