@@ -8,17 +8,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from trimmy.crop.domain.models import CropRect, CropSelection
-from trimmy.preferences.domain.models import Preferences
-from trimmy.preferences.infrastructure.json_preferences_repository import (
+from trimmy.app.preferences.domain.models import Preferences
+from trimmy.app.preferences.infrastructure.json_preferences_repository import (
     JsonPreferencesRepository,
 )
-from trimmy.render.infrastructure import ffmpeg as ffmpeg_mod
-from trimmy.render.infrastructure.ffmpeg import (
+from trimmy.editing.shared.domain.models import CropRect, CropSelection
+from trimmy.rendering.infrastructure import ffmpeg as ffmpeg_mod
+from trimmy.rendering.infrastructure.ffmpeg import (
     FFmpegRenderingBackend,
     FFprobeVideoProber,
 )
-from trimmy.render.infrastructure.in_memory_preset_repository import (
+from trimmy.rendering.infrastructure.in_memory_preset_repository import (
     InMemoryPresetRepository,
 )
 
