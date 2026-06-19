@@ -2,11 +2,34 @@
 name = "trimmy"
 version = "0.5.1"
 description = "Trimmy — vertical split crop video editor"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10,<3.15"
+keywords = ["video", "editor", "crop", "vertical", "social-media", "ffmpeg", "9:16", "reels", "tiktok"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Video :: Conversion",
+]
 dependencies = [
     "PySide6>=6.5",
     "typing_extensions>=4.0; python_version < '3.12'",
 ]
+
+[project.urls]
+Homepage = "https://github.com/musantro/trimmy"
+Repository = "https://github.com/musantro/trimmy"
+Issues = "https://github.com/musantro/trimmy/issues"
+Changelog = "https://github.com/musantro/trimmy/blob/master/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
