@@ -21,13 +21,19 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
-from trimmy.editing.crop.application.use_cases import (
+from trimmy.editing.crop.application.initialize_crops_use_case import (
     InitializeCropsRequest,
     InitializeCropsUseCase,
+)
+from trimmy.editing.crop.application.move_crop_use_case import (
     MoveCropRequest,
     MoveCropUseCase,
+)
+from trimmy.editing.crop.application.resize_crop_use_case import (
     ResizeCropRequest,
     ResizeCropUseCase,
+)
+from trimmy.editing.crop.application.synchronize_aspects_use_case import (
     SynchronizeAspectsRequest,
     SynchronizeAspectsUseCase,
 )
@@ -43,9 +49,11 @@ from trimmy.editing.shared.domain.models import (
     SourceSize,
     TrimRange,
 )
-from trimmy.editing.trim.application.use_cases import (
+from trimmy.editing.trim.application.set_trim_end_use_case import (
     SetTrimEndRequest,
     SetTrimEndUseCase,
+)
+from trimmy.editing.trim.application.set_trim_start_use_case import (
     SetTrimStartRequest,
     SetTrimStartUseCase,
 )

@@ -7,13 +7,15 @@ from pathlib import Path
 
 from tests.mothers import make_spec
 from trimmy.editing.shared.domain.models import TrimRange
-from trimmy.rendering.application.use_cases import (
+from trimmy.rendering.application.probe_video_use_case import (
     ProbeVideoRequest,
     ProbeVideoUseCase,
+)
+from trimmy.rendering.application.render_segments_use_case import (
     RenderJobRequest,
     RenderSegmentsUseCase,
-    RenderVideoUseCase,
 )
+from trimmy.rendering.application.render_video_use_case import RenderVideoUseCase
 from trimmy.rendering.domain.gateways import RenderingBackend, VideoProber
 from trimmy.rendering.domain.models import ProcessResult, VideoMetadata
 from trimmy.rendering.infrastructure.in_memory_preset_repository import (

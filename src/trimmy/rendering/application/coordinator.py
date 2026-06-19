@@ -10,7 +10,7 @@ It is deliberately synchronous and PySide6-free, so it can be driven by an
 
 from __future__ import annotations
 
-from trimmy.rendering.application.use_cases import (
+from trimmy.rendering.application.render_segments_use_case import (
     RenderJobRequest,
     RenderSegmentsUseCase,
 )
