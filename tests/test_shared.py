@@ -48,10 +48,9 @@ def test_specification_not():
 
 
 class _Doubler(UseCase[int, int]):
-    @override
-    def execute(self, request: int) -> int:
+    def double(self, request: int) -> int:
         return request * 2
 
 
-def test_use_case_execute():
-    assert _Doubler().execute(21) == 42
+def test_use_case_exposes_domain_verb():
+    assert _Doubler().double(21) == 42

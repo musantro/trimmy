@@ -23,7 +23,9 @@ from trimmy.crop.infrastructure.in_memory_crop_selection_repository import (
 def test_initialize_crops_use_case():
     repo = InMemoryCropSelectionRepository()
     use_case = InitializeCropsUseCase(repo)
-    selection = use_case.execute(InitializeCropsRequest(make_source(1000, 1000)))
+    selection = use_case.initialize(
+        InitializeCropsRequest(make_source(1000, 1000)),
+    )
     assert selection.top.w == 600.0
     assert repo.get() == selection
 
@@ -33,7 +35,7 @@ def test_synchronize_aspects_use_case():
         make_selection(make_crop(0, 0, 400, 400), make_crop(0, 0, 400, 400)),
     )
     use_case = SynchronizeAspectsUseCase(repo)
-    selection = use_case.execute(
+    selection = use_case.synchronize(
         SynchronizeAspectsRequest(CropAspects(2.0, 1.0), make_source(1920, 1080)),
     )
     assert selection.top.h == 200.0
@@ -44,7 +46,7 @@ def test_synchronize_aspects_use_case():
 def test_move_crop_use_case():
     repo = InMemoryCropSelectionRepository(make_selection())
     use_case = MoveCropUseCase(repo)
-    selection = use_case.execute(
+    selection = use_case.move(
         MoveCropRequest(
             CropPosition.TOP,
             make_crop(0, 0, 100, 100),
@@ -61,7 +63,7 @@ def test_move_crop_use_case():
 def test_resize_crop_use_case():
     repo = InMemoryCropSelectionRepository(make_selection())
     use_case = ResizeCropUseCase(repo)
-    selection = use_case.execute(
+    selection = use_case.resize(
         ResizeCropRequest(
             CropPosition.BOTTOM,
             CropHandle.SE,

@@ -41,11 +41,11 @@ def test_preferences_default():
 def test_load_preferences_use_case():
     custom = Preferences.default()
     repo = FakePreferencesRepository(custom)
-    assert LoadPreferencesUseCase(repo).execute() is custom
+    assert LoadPreferencesUseCase(repo).load() is custom
 
 
 def test_save_preferences_use_case():
     repo = FakePreferencesRepository()
     prefs = Preferences.default()
-    SavePreferencesUseCase(repo).execute(prefs)
+    SavePreferencesUseCase(repo).save(prefs)
     assert repo.saved is prefs

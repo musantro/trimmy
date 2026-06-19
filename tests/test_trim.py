@@ -90,21 +90,21 @@ def test_planner_splits_into_parts():
 
 
 def test_set_trim_start_use_case():
-    updated = SetTrimStartUseCase().execute(
+    updated = SetTrimStartUseCase().set_start(
         SetTrimStartRequest(TrimRange(0.0, 10.0), 4.0),
     )
     assert updated.start == 4.0
 
 
 def test_set_trim_end_use_case():
-    updated = SetTrimEndUseCase().execute(
+    updated = SetTrimEndUseCase().set_end(
         SetTrimEndRequest(TrimRange(0.0, 10.0), 8.0, 20.0),
     )
     assert updated.end == 8.0
 
 
 def test_plan_segments_use_case():
-    segments = PlanSegmentsUseCase().execute(
+    segments = PlanSegmentsUseCase().plan(
         PlanSegmentsRequest(TrimRange(0.0, 25.0), 10.0),
     )
     assert len(segments) == 3
