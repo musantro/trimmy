@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from trimmy.crop.domain.crop_selection_repository import CropSelectionRepository
 from trimmy.crop.domain.models import CropRect, CropSelection
-from trimmy.crop.domain.repositories import CropSelectionRepository
 from trimmy.shared.compat import override
 
 _EMPTY_SELECTION = CropSelection(top=CropRect(), bottom=CropRect())
