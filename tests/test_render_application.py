@@ -45,6 +45,10 @@ class FakeBackend(RenderingBackend):
         return self._cancelled
 
     @override
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    @override
     def detect_gpu_encoder(self) -> str | None:
         return self._gpu
 
