@@ -5,14 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests.mothers import make_crop, make_preset, make_selection, make_spec
-from trimmy.render.domain.models import (
+from trimmy.editing.shared.domain.models import TrimRange
+from trimmy.rendering.domain.models import (
     BitratePlan,
     DimensionPlan,
     RenderJobResult,
     RenderOutcome,
     Resolution,
 )
-from trimmy.render.domain.services import (
+from trimmy.rendering.domain.services import (
     BitratePlanner,
     CodecArgsFactory,
     CommandBuilder,
@@ -21,14 +22,13 @@ from trimmy.render.domain.services import (
     FormatSelector,
     FpsPlanner,
 )
-from trimmy.render.domain.specifications import (
+from trimmy.rendering.domain.specifications import (
     FpsCapRequiredSpecification,
     RequiresDynamicBitrateSpecification,
 )
-from trimmy.render.infrastructure.in_memory_preset_repository import (
+from trimmy.rendering.infrastructure.in_memory_preset_repository import (
     InMemoryPresetRepository,
 )
-from trimmy.trim.domain.models import TrimRange
 
 # ---- models ----
 

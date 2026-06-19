@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from trimmy.preferences.application.use_cases import (
+from trimmy.app.preferences.application.use_cases import (
     LoadPreferencesUseCase,
     SavePreferencesUseCase,
 )
-from trimmy.preferences.domain.models import Preferences
-from trimmy.preferences.domain.preferences_repository import PreferencesRepository
+from trimmy.app.preferences.domain.models import Preferences
+from trimmy.app.preferences.domain.preferences_repository import PreferencesRepository
 from trimmy.shared.compat import override
 
 

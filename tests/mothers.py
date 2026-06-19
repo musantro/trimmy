@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trimmy.crop.domain.models import CropRect, CropSelection, SourceSize
-from trimmy.render.domain.models import EncoderPreset, RenderSpec
-from trimmy.trim.domain.models import TrimRange
+from trimmy.editing.shared.domain.models import (
+    CropRect,
+    CropSelection,
+    SourceSize,
+    TrimRange,
+)
+from trimmy.rendering.domain.models import EncoderPreset, RenderSpec
 
 
 def make_source(width: int = 1920, height: int = 1080) -> SourceSize:

@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-from trimmy.trim.application.use_cases import (
-    PlanSegmentsRequest,
-    PlanSegmentsUseCase,
+from trimmy.editing.shared.domain.models import TrimRange
+from trimmy.editing.trim.application.use_cases import (
     SetTrimEndRequest,
     SetTrimEndUseCase,
     SetTrimStartRequest,
     SetTrimStartUseCase,
 )
-from trimmy.trim.domain.models import Segment, TrimRange
-from trimmy.trim.domain.services import SegmentPlanner
-from trimmy.trim.domain.specifications import (
-    ExceedsMaxDurationSpecification,
-    ValidTrimRangeSpecification,
+from trimmy.editing.trim.domain.specifications import ValidTrimRangeSpecification
+from trimmy.rendering.application.use_cases import (
+    PlanSegmentsRequest,
+    PlanSegmentsUseCase,
 )
+from trimmy.rendering.domain.models import Segment
+from trimmy.rendering.domain.services import SegmentPlanner
+from trimmy.rendering.domain.specifications import ExceedsMaxDurationSpecification
 
 # ---- models ----
 
