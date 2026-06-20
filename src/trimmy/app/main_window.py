@@ -1,4 +1,4 @@
-"""Main application window, render worker, and drop overlay."""
+"""Main application window and render worker."""
 
 from __future__ import annotations
 
@@ -15,17 +15,11 @@ else:
 from PySide6.QtCore import Qt, QThread, QUrl
 from PySide6.QtGui import (
     QCloseEvent,
-    QColor,
     QDragEnterEvent,
     QDragLeaveEvent,
     QDropEvent,
-    QFont,
     QImage,
     QKeyEvent,
-    QPainter,
-    QPaintEvent,
-    QPen,
-    QResizeEvent,
 )
 from PySide6.QtMultimedia import (
     QAudioOutput,
@@ -35,7 +29,6 @@ from PySide6.QtMultimedia import (
 )
 from PySide6.QtWidgets import (
     QApplication,
-    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -43,13 +36,20 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
-    QSlider,
     QStatusBar,
     QVBoxLayout,
     QWidget,
 )
 
 from trimmy import __version__
+from trimmy.app.components import (
+    DropOverlay,
+    KeybindingsDialog,
+    SectionLabel,
+    StatusLabel,
+    ToggleButtonGroup,
+    VolumeControl,
+)
 from trimmy.app.preferences.application.load_preferences_use_case import (
     LoadPreferencesUseCase,
 )
@@ -60,6 +60,7 @@ from trimmy.app.preferences.domain.models import Preferences
 from trimmy.app.preferences.infrastructure.json_preferences_repository import (
     JsonPreferencesRepository,
 )
+from trimmy.app.theme import Spacing, build_stylesheet
 from trimmy.app.widgets import (
     CropWidget,
     PreviewWidget,
@@ -114,91 +115,6 @@ from trimmy.shared.infrastructure.pyside_event_bus import PySideEventBus
 
 logger = logging.getLogger(__name__)
 
-_STYLE_ERROR = (
-    "background: #4a1a1a; color: #e94560; padding: 8px 12px; border-radius: 6px;"
-)
-_STYLE_SUCCESS = (
-    "background: #1a4a2e; color: #4ecdc4; padding: 8px 12px; border-radius: 6px;"
-)
-
-
-class DropOverlay(QWidget):
-    """Semi-transparent overlay shown while dragging a file onto the window."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.hide()
-        self.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
-            False,  # noqa: FBT003
-        )
-
-    @override
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
-        """Draw the drop-target border and label."""
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)  # ty: ignore[unresolved-attribute]
-        p.fillRect(self.rect(), QColor(10, 10, 30, 200))
-
-        border = QColor("#e94560")
-        pen = QPen(border, 3, Qt.DashLine)  # ty: ignore[unresolved-attribute]
-        p.setPen(pen)
-        p.setBrush(Qt.NoBrush)  # ty: ignore[unresolved-attribute]
-        margin = 40
-        p.drawRoundedRect(
-            margin,
-            margin,
-            self.width() - 2 * margin,
-            self.height() - 2 * margin,
-            16,
-            16,
-        )
-
-        p.setPen(QColor("#e94560"))
-        font = QFont()
-        font.setPointSize(28)
-        font.setBold(True)  # noqa: FBT003
-        p.setFont(font)
-        p.drawText(self.rect(), Qt.AlignCenter, "Drop video here")  # ty: ignore[unresolved-attribute]
-
-    @override
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
-        """Forward resize to the base class."""
-        super().resizeEvent(event)
-
-
-STYLESHEET = """\
-QMainWindow, QWidget#central { background: #1a1a2e; }
-QLabel { color: #e0e0e0; }
-QPushButton {
-    background: #0f3460; color: #e0e0e0; border: none; border-radius: 6px;
-    padding: 8px 16px; font-size: 13px; font-weight: 600;
-}
-QPushButton:hover { background: #1a4a80; }
-QPushButton:checked { background: #e94560; color: #fff; }
-QPushButton:disabled { background: #444; color: #888; }
-QPushButton#render { background: #e94560; color: #fff; }
-QPushButton#render:hover { background: #d63851; }
-QPushButton#render:disabled { background: #555; color: #888; }
-QPushButton#stop { background: #e07020; color: #fff; }
-QPushButton#stop:hover { background: #f08030; }
-QLabel#section {
-    color: #aaa; font-size: 12px;
-    text-transform: uppercase; letter-spacing: 1px;
-}
-QLabel#status { padding: 8px 12px; border-radius: 6px; font-size: 13px; }
-QLabel#info { color: #888; font-size: 12px; }
-QMenu {
-    background: #16213e; color: #e0e0e0; border: 1px solid #0f3460;
-    border-radius: 4px; padding: 4px 0;
-}
-QMenu::item { padding: 8px 20px; font-size: 13px; }
-QMenu::item:selected { background: #1a4a80; }
-QStatusBar { background: #16213e; }
-QStatusBar::item { border: none; }
-QLabel#version { color: #888; font-size: 11px; padding: 2px 10px; }
-"""
-
 
 class RenderWorker(QThread):
     """
@@ -244,7 +160,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Trimmy")
         self.setMinimumSize(1100, 750)
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(build_stylesheet())
 
         self.setAcceptDrops(True)  # noqa: FBT003
 
@@ -296,11 +212,11 @@ class MainWindow(QMainWindow):
         central.setObjectName("central")
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
-        root.setSpacing(20)
-        root.setContentsMargins(20, 20, 20, 20)
+        root.setSpacing(Spacing.MD)
+        root.setContentsMargins(Spacing.MD, Spacing.MD, Spacing.MD, Spacing.MD)
 
         left = QVBoxLayout()
-        left.setSpacing(12)
+        left.setSpacing(Spacing.SM)
 
         self.crop_widget = CropWidget()
         left.addWidget(self.crop_widget, stretch=1)
@@ -318,75 +234,36 @@ class MainWindow(QMainWindow):
         pb.addWidget(self.time_label)
         pb.addStretch()
 
-        self.mute_btn = QPushButton("\U0001f50a")
-        self.mute_btn.setFixedWidth(36)
-        self.mute_btn.setStyleSheet("font-size: 16px; padding: 4px;")
-        self.mute_btn.clicked.connect(self._toggle_mute)
-        pb.addWidget(self.mute_btn)
-
-        self.volume_slider = QSlider(Qt.Horizontal)  # ty: ignore[unresolved-attribute]
-        self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(self._volume)
-        self.volume_slider.setFixedWidth(100)
-        self.volume_slider.setStyleSheet(
-            "QSlider::groove:horizontal {"
-            "  background: #0f3460; height: 6px; border-radius: 3px;"
-            "}"
-            "QSlider::handle:horizontal {"
-            "  background: #e94560; width: 14px; margin: -4px 0;"
-            "  border-radius: 7px;"
-            "}"
-            "QSlider::sub-page:horizontal {"
-            "  background: #e94560; border-radius: 3px;"
-            "}"
-        )
-        self.volume_slider.valueChanged.connect(self._on_volume_changed)
-        pb.addWidget(self.volume_slider)
-
-        self.volume_label = QLabel(f"{self._volume}%")
-        self.volume_label.setFixedWidth(36)
-        self.volume_label.setStyleSheet("color: #888; font-size: 12px;")
-        pb.addWidget(self.volume_label)
+        self.volume_control = VolumeControl(initial_volume=self._volume)
+        self.volume_control.volume_changed.connect(self._on_volume_changed)
+        pb.addWidget(self.volume_control)
 
         left.addLayout(pb)
 
         # platform row
-        left.addWidget(self._section_label("Platform"))
-        plat = QHBoxLayout()
-        self._platform_btns: dict[str, QPushButton] = {}
-        self._platform_labels: dict[str, str] = {}
-        for name, label in [
-            ("instagram", "Instagram"),
-            ("tiktok", "TikTok"),
-            ("twitter", "Twitter / X"),
-            ("whatsapp", "WhatsApp"),
-            ("telegram", "Telegram"),
-        ]:
-            btn = QPushButton(label)
-            btn.setCheckable(True)  # noqa: FBT003
-            btn.setChecked(name == self.selected_platform)
-            btn.clicked.connect(
-                lambda _, n=name: self._on_platform_click(n),
-            )
-            plat.addWidget(btn)
-            self._platform_btns[name] = btn
-            self._platform_labels[name] = label
-        plat.addStretch()
-        left.addLayout(plat)
+        left.addWidget(SectionLabel("Platform"))
+        self._platform_group = ToggleButtonGroup(
+            options=[
+                ("instagram", "Instagram"),
+                ("tiktok", "TikTok"),
+                ("twitter", "Twitter / X"),
+                ("whatsapp", "WhatsApp"),
+                ("telegram", "Telegram"),
+            ],
+            selected=self.selected_platform,
+        )
+        self._platform_group.selection_changed.connect(self._on_platform_click)
+        left.addWidget(self._platform_group)
 
         # quality row
         qual = QHBoxLayout()
         qual.addWidget(QLabel("Quality:"))
-        self._quality_btns: dict[str, QPushButton] = {}
-        for q, label in [("max", "Max"), ("optimized", "Optimized")]:
-            btn = QPushButton(label)
-            btn.setCheckable(True)  # noqa: FBT003
-            btn.setChecked(q == self.selected_quality)
-            btn.clicked.connect(
-                lambda _, qq=q: self._select_quality(qq),
-            )
-            qual.addWidget(btn)
-            self._quality_btns[q] = btn
+        self._quality_group = ToggleButtonGroup(
+            options=[("max", "Max"), ("optimized", "Optimized")],
+            selected=self.selected_quality,
+        )
+        self._quality_group.selection_changed.connect(self._select_quality)
+        qual.addWidget(self._quality_group)
         qual.addStretch()
         left.addLayout(qual)
 
@@ -413,15 +290,13 @@ class MainWindow(QMainWindow):
         act.addStretch()
         left.addLayout(act)
 
-        self.status_label = QLabel()
-        self.status_label.setObjectName("status")
-        self.status_label.setWordWrap(True)  # noqa: FBT003
+        self.status_label = StatusLabel()
         left.addWidget(self.status_label)
 
         # right panel
         right = QVBoxLayout()
-        right.setSpacing(10)
-        right.addWidget(self._section_label("Preview (9:16)"))
+        right.setSpacing(Spacing.SM)
+        right.addWidget(SectionLabel("Preview (9:16)"))
         self.preview = PreviewWidget()
         self.preview.split_ratio = self.split_ratio
         right.addWidget(self.preview, alignment=Qt.AlignHCenter)  # ty: ignore[unresolved-attribute]
@@ -430,9 +305,7 @@ class MainWindow(QMainWindow):
             f"Split: {pct}% / {100 - pct}% — Drag the red bar to adjust",
         )
         self.split_label.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]
-        self.split_label.setStyleSheet(
-            "color: #888; font-size: 12px;",
-        )
+        self.split_label.setObjectName("info")
         right.addWidget(self.split_label)
         right.addStretch()
 
@@ -457,12 +330,6 @@ class MainWindow(QMainWindow):
         self.version_label = QLabel(f"v{__version__}")
         self.version_label.setObjectName("version")
         status_bar.addPermanentWidget(self.version_label)
-
-    @staticmethod
-    def _section_label(text: str) -> QLabel:
-        lbl = QLabel(text)
-        lbl.setObjectName("section")
-        return lbl
 
     # ---- file open ----
 
@@ -511,7 +378,7 @@ class MainWindow(QMainWindow):
         self.player.play()
 
         self.setWindowTitle(f"Trimmy — {path.name}")
-        self.status_label.setText("")
+        self.status_label.clear()
 
     # ---- media player callbacks ----
 
@@ -566,23 +433,6 @@ class MainWindow(QMainWindow):
     def _on_volume_changed(self, value: int) -> None:
         self._volume = value
         self.audio.setVolume(value / 100.0)
-        self.volume_label.setText(f"{value}%")
-        if value == 0:
-            self.mute_btn.setText("\U0001f507")
-        else:
-            self.mute_btn.setText("\U0001f50a")
-
-    def _toggle_mute(self) -> None:
-        if self.audio.isMuted():
-            self.audio.setMuted(False)  # noqa: FBT003
-            self.mute_btn.setText(
-                "\U0001f507" if self._volume == 0 else "\U0001f50a",
-            )
-            self.volume_slider.setEnabled(True)  # noqa: FBT003
-        else:
-            self.audio.setMuted(True)  # noqa: FBT003
-            self.mute_btn.setText("\U0001f507")
-            self.volume_slider.setEnabled(False)  # noqa: FBT003
 
     # ---- timeline ----
 
@@ -625,10 +475,10 @@ class MainWindow(QMainWindow):
 
     def _on_platform_click(self, name: str) -> None:
         formats = self._presets.formats(name)
-        btn = self._platform_btns[name]
         if len(formats) == 1:
             self._select_platform(name, formats[0].key)
             return
+        btn = self._platform_group.button(name)
         btn.setChecked(name == self.selected_platform)
         menu = QMenu(self)
         for fmt in formats:
@@ -655,8 +505,7 @@ class MainWindow(QMainWindow):
         if format_key is None:
             format_key = self._presets.formats(name)[0].key
         self.selected_format = format_key
-        for n, btn in self._platform_btns.items():
-            btn.setChecked(n == name)
+        self._platform_group.set_selected(name)
         self._update_crop_aspects()
         self._update_info()
 
@@ -680,8 +529,7 @@ class MainWindow(QMainWindow):
 
     def _select_quality(self, q: str) -> None:
         self.selected_quality = q
-        for qq, btn in self._quality_btns.items():
-            btn.setChecked(qq == q)
+        self._quality_group.set_selected(q)
         self._update_crop_aspects()
         self._update_info()
 
@@ -743,11 +591,7 @@ class MainWindow(QMainWindow):
 
         self.render_btn.setEnabled(False)  # noqa: FBT003
         self.stop_btn.setVisible(True)  # noqa: FBT003
-        self.status_label.setStyleSheet(
-            "background: #0f3460; color: #4ecdc4;"
-            " padding: 8px 12px; border-radius: 6px;",
-        )
-        self.status_label.setText(
+        self.status_label.set_info(
             "Rendering... this may take a while",
         )
 
@@ -775,7 +619,7 @@ class MainWindow(QMainWindow):
             self._render_worker.stop()
 
     def _on_render_progressed(self, event: RenderProgressed) -> None:
-        self.status_label.setText(
+        self.status_label.set_info(
             f"Rendering part {event.current} of {event.total}...",
         )
 
@@ -786,11 +630,7 @@ class MainWindow(QMainWindow):
         self.stop_btn.setVisible(False)  # noqa: FBT003
 
         if result.is_cancelled:
-            self.status_label.setStyleSheet(
-                "background: #3a3a1e; color: #e0c040;"
-                " padding: 8px 12px; border-radius: 6px;",
-            )
-            self.status_label.setText("Render stopped.")
+            self.status_label.set_warning("Render stopped.")
             return
 
         if result.multipart:
@@ -799,11 +639,9 @@ class MainWindow(QMainWindow):
 
         outcome = result.first
         if outcome.is_failed:
-            self.status_label.setStyleSheet(_STYLE_ERROR)
-            self.status_label.setText(f"Error: {(outcome.error or '')[:300]}")
+            self.status_label.set_error(f"Error: {(outcome.error or '')[:300]}")
             return
-        self.status_label.setStyleSheet(_STYLE_SUCCESS)
-        self.status_label.setText(
+        self.status_label.set_success(
             f"Done! {outcome.resolution}  ·  "
             f"{outcome.fps} fps  ·  "
             f"{outcome.size_mb} MB  ·  "
@@ -813,15 +651,13 @@ class MainWindow(QMainWindow):
     def _show_multipart_result(self, result: RenderJobResult) -> None:
         failures = result.failures
         if failures:
-            self.status_label.setStyleSheet(_STYLE_ERROR)
             first = failures[0]
-            self.status_label.setText(
+            self.status_label.set_error(
                 f"Error in part {first.index}: {(first.error or '')[:300]}",
             )
             return
-        self.status_label.setStyleSheet(_STYLE_SUCCESS)
         first = result.first
-        self.status_label.setText(
+        self.status_label.set_success(
             f"Done! {result.parts} parts  ·  "
             f"{first.resolution}  ·  "
             f"{first.fps} fps  ·  "
@@ -882,7 +718,7 @@ class MainWindow(QMainWindow):
         elif event.key() == Qt.Key_E:  # ty: ignore[unresolved-attribute]
             self._set_trim_end_to_playhead()
         elif event.key() == Qt.Key_M:  # ty: ignore[unresolved-attribute]
-            self._toggle_mute()
+            self.volume_control.toggle_mute()
         elif event.key() == Qt.Key_Question:  # ty: ignore[unresolved-attribute]
             self._show_keybindings_help()
         else:
@@ -911,25 +747,6 @@ class MainWindow(QMainWindow):
         self.timeline.apply_range(updated)
 
     def _show_keybindings_help(self) -> None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Keyboard Shortcuts")
-        dialog.setFixedSize(360, 310)
-        dialog.setStyleSheet(
-            "QDialog { background: #1a1a2e; }QLabel { color: #ffffff; }"
-        )
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(6)
-        layout.setContentsMargins(24, 20, 24, 20)
-
-        title = QLabel("Keyboard Shortcuts")
-        title_font = QFont()
-        title_font.setPointSize(14)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        title.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]
-        layout.addWidget(title)
-        layout.addSpacing(8)
-
         shortcuts = [
             ("K", "Play / Pause"),
             ("J", "Seek backward 5s"),
@@ -939,29 +756,7 @@ class MainWindow(QMainWindow):
             ("M", "Toggle mute"),
             ("?", "Show this help"),
         ]
-        row_font = QFont()
-        row_font.setPointSize(10)
-        for key, desc in shortcuts:
-            row = QHBoxLayout()
-            key_label = QLabel(key)
-            key_label.setFont(row_font)
-            key_label.setFixedWidth(100)
-            key_label.setStyleSheet(
-                "color: #e94560; font-weight: bold;",
-            )
-            desc_label = QLabel(desc)
-            desc_label.setFont(row_font)
-            desc_label.setStyleSheet("color: #cccccc;")
-            row.addWidget(key_label)
-            row.addWidget(desc_label)
-            layout.addLayout(row)
-
-        layout.addSpacing(10)
-        hint = QLabel("Press Esc to close")
-        hint.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]
-        hint.setStyleSheet("color: #666666; font-size: 9pt;")
-        layout.addWidget(hint)
-
+        dialog = KeybindingsDialog(shortcuts, self)
         dialog.exec()
 
     # ---- drag and drop ----
