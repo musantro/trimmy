@@ -1,3 +1,9 @@
+## v0.8.1 (2026-06-20)
+
+### Refactor
+
+- **app**: adopt DESIGN.md design system with reusable components
+
 ## v0.8.0 (2026-06-20)
 
 ### Feat
