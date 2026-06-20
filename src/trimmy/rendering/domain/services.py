@@ -46,11 +46,12 @@ class SegmentPlanner:
             ]
 
         num_parts = math.ceil(trim_range.duration / max_duration)
+        equal_part = trim_range.duration / num_parts
         segments: list[Segment] = []
         for i in range(num_parts):
-            seg_start = trim_range.start + i * max_duration
+            seg_start = trim_range.start + i * equal_part
             seg_end = min(
-                trim_range.start + (i + 1) * max_duration,
+                trim_range.start + (i + 1) * equal_part,
                 trim_range.end,
             )
             segments.append(
