@@ -32,8 +32,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qt_material_icons import MaterialIcon
 
+from trimmy.app.icons import MaterialIcon
 from trimmy.app.theme import Colors, Radii, Spacing, Typography
 
 
@@ -527,7 +527,7 @@ class SidebarNavButton(QWidget):
             fg = self._FG_NORMAL
 
         self._icon_label.setPixmap(
-            MaterialIcon(self._icon_name).pixmap(QSize(20, 20), color=QColor(fg)),
+            MaterialIcon(self._icon_name).colored_pixmap(QSize(20, 20), QColor(fg)),
         )
         self._text_label.setStyleSheet(f"color: {fg}; background: transparent;")
         self.update()
@@ -649,7 +649,9 @@ class DropZone(QWidget):
         upload_icon = MaterialIcon("upload")
         icon_label = QLabel()
         icon_label.setPixmap(
-            upload_icon.pixmap(QSize(40, 40), color=QColor(Colors.ON_SURFACE_VARIANT)),
+            upload_icon.colored_pixmap(
+                QSize(40, 40), QColor(Colors.ON_SURFACE_VARIANT)
+            ),
         )
         icon_label.setFixedSize(80, 80)
         icon_label.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]

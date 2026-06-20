@@ -22,7 +22,6 @@ classifiers = [
 ]
 dependencies = [
     "PySide6>=6.5",
-    "qt-material-icons>=0.5.0",
     "typing_extensions>=4.0; python_version < '3.12'",
 ]
 
@@ -114,6 +113,8 @@ ignore = ["D107", "D203", "D212", "D415", "B008"]
   "S106",
   "D",
 ]
+# Generated icon data: long single-line SVG payloads are expected.
+"src/trimmy/app/icons/_data.py" = ["E501"]
 
 [tool.ty.environment]
 python-version = "3.10"

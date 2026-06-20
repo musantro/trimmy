@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qt_material_icons import MaterialIcon
 
 from trimmy.app.components import (
     ActionButton,
@@ -20,6 +19,7 @@ from trimmy.app.components import (
     RenderProgressItem,
     SectionLabel,
 )
+from trimmy.app.icons import MaterialIcon
 from trimmy.app.theme import Colors, Radii, Spacing, Typography
 from trimmy.app.widgets import PreviewWidget
 
@@ -119,9 +119,9 @@ class RenderView(QWidget):
         timer_icon = MaterialIcon("timer")
         estimate_icon = QLabel()
         estimate_icon.setPixmap(
-            timer_icon.pixmap(
+            timer_icon.colored_pixmap(
                 QSize(14, 14),
-                color=QColor(Colors.ON_SURFACE_VARIANT),
+                QColor(Colors.ON_SURFACE_VARIANT),
             ),
         )
         estimate_icon.setStyleSheet("background: transparent;")
