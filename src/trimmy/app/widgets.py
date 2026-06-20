@@ -21,6 +21,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
+from trimmy.app.theme import Colors, Typography
 from trimmy.editing.crop.application.initialize_crops_use_case import (
     InitializeCropsRequest,
     InitializeCropsUseCase,
@@ -62,8 +63,8 @@ _HANDLE_HIT_RADIUS = 10
 _HANDLE_SIZE = 10
 
 _CROP_COLORS: list[tuple[CropPosition, str]] = [
-    (CropPosition.TOP, "#4ecdc4"),
-    (CropPosition.BOTTOM, "#ffe66d"),
+    (CropPosition.TOP, Colors.PRIMARY),
+    (CropPosition.BOTTOM, Colors.TERTIARY),
 ]
 
 
@@ -141,10 +142,10 @@ class CropWidget(QWidget):
         """Draw the video frame and crop overlays."""
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)  # ty: ignore[unresolved-attribute]
-        p.fillRect(self.rect(), QColor("#000000"))
+        p.fillRect(self.rect(), QColor(Colors.LEVEL_0))
 
         if self.frame is None or self.source.width == 0:
-            p.setPen(QColor("#666"))
+            p.setPen(QColor(Colors.OUTLINE))
             p.drawText(
                 self.rect(),
                 Qt.AlignCenter,  # ty: ignore[unresolved-attribute]
@@ -194,7 +195,7 @@ class CropWidget(QWidget):
 
         hs = _HANDLE_SIZE
         p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
-        p.setBrush(Qt.white)  # ty: ignore[unresolved-attribute]
+        p.setBrush(QColor(Colors.ON_SURFACE))
         for cx, cy in [
             (r.left(), r.top()),
             (r.right(), r.top()),
@@ -361,7 +362,7 @@ class PreviewWidget(QWidget):
         """Render the composited preview with a split bar."""
         p = QPainter(self)
         p.setRenderHint(QPainter.SmoothPixmapTransform)  # ty: ignore[unresolved-attribute]
-        p.fillRect(self.rect(), Qt.black)  # ty: ignore[unresolved-attribute]
+        p.fillRect(self.rect(), QColor(Colors.LEVEL_0))
 
         if self.frame is None:
             return
@@ -386,10 +387,10 @@ class PreviewWidget(QWidget):
             )
 
         p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
-        p.setBrush(QColor("#e94560"))
+        p.setBrush(QColor(Colors.PRIMARY))
         p.drawRect(QRectF(0, top_h - 3, self.width(), 6))
 
-        border = QColor("#333333")
+        border = QColor(Colors.LEVEL_1_BORDER)
         p.setPen(QPen(border, 2))
         p.setBrush(Qt.NoBrush)  # ty: ignore[unresolved-attribute]
         p.drawRoundedRect(
@@ -491,12 +492,14 @@ class TimelineWidget(QWidget):
         bar = self._bar()
 
         p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
-        p.setBrush(QColor("#0a0a1a"))
+        p.setBrush(QColor(Colors.SURFACE_CONTAINER_LOWEST))
         p.drawRoundedRect(bar, 6, 6)
 
         sx = self._t2x(self.trim_start)
         ex = self._t2x(self.trim_end)
-        p.setBrush(QColor(233, 69, 96, 76))
+        trim_fill = QColor(Colors.PRIMARY)
+        trim_fill.setAlpha(76)
+        p.setBrush(trim_fill)
         p.drawRoundedRect(
             QRectF(sx, bar.top(), ex - sx, bar.height()),
             6,
@@ -506,7 +509,7 @@ class TimelineWidget(QWidget):
         hw = 12
         for t in (self.trim_start, self.trim_end):
             hx = self._t2x(t)
-            p.setBrush(QColor("#e94560"))
+            p.setBrush(QColor(Colors.PRIMARY))
             p.drawRoundedRect(
                 QRectF(hx - hw / 2, bar.top() - 4, hw, bar.height() + 8),
                 3,
@@ -514,14 +517,14 @@ class TimelineWidget(QWidget):
             )
 
         phx = self._t2x(self.position)
-        p.setPen(QPen(Qt.white, 2))  # ty: ignore[unresolved-attribute]
+        p.setPen(QPen(QColor(Colors.ON_SURFACE), 2))
         p.drawLine(
             QPointF(phx, bar.top()),
             QPointF(phx, bar.bottom()),
         )
 
-        p.setPen(QColor("#aaaaaa"))
-        font = QFont()
+        p.setPen(QColor(Colors.ON_SURFACE_VARIANT))
+        font = QFont(Typography.MONO)
         font.setPointSize(9)
         p.setFont(font)
         y = bar.bottom() + 4
