@@ -1,3 +1,9 @@
+## v0.8.2 (2026-06-20)
+
+### Refactor
+
+- **app**: multi-view GUI with sidebar navigation (#26)
+
 ## v0.8.1 (2026-06-20)
 
 ### Refactor
