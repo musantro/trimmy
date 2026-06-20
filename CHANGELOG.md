@@ -1,3 +1,9 @@
+## v0.8.3 (2026-06-20)
+
+### Fix
+
+- **rendering**: split segments into equal-length parts
+
 ## v0.8.2 (2026-06-20)
 
 ### Refactor
