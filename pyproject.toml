@@ -22,6 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "PySide6>=6.5",
+    "qt-material-icons>=0.5.0",
     "typing_extensions>=4.0; python_version < '3.12'",
 ]
 
@@ -50,7 +51,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=trimmy --cov-report=term-missing --cov-fail-under=100"
+addopts = "--cov=src/trimmy --cov-report=term-missing --cov-fail-under=100"
 
 [tool.coverage.run]
 # Coverage is enforced only on the domain and application layers of every

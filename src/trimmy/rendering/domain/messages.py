@@ -29,10 +29,9 @@ class StopRendering(Event):
 
 @dataclass(frozen=True)
 class RenderProgressed(Event):
-    """Event: segment *current* of *total* is being rendered."""
+    """Event: render is *pct* % complete (0–100)."""
 
-    current: int
-    total: int
+    pct: int
 
 
 @dataclass(frozen=True)

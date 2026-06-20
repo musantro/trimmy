@@ -53,5 +53,5 @@ class RenderCoordinator:
         """Cancel the in-flight encode."""
         self._backend.cancel()
 
-    def _publish_progress(self, current: int, total: int) -> None:
-        self._bus.publish(RenderProgressed(current, total))
+    def _publish_progress(self, pct: int) -> None:
+        self._bus.publish(RenderProgressed(pct))

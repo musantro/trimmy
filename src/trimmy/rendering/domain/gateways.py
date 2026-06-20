@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from trimmy.rendering.domain.models import ProcessResult, VideoMetadata
@@ -29,7 +29,13 @@ class RenderingBackend(ABC):
         ...
 
     @abstractmethod
-    def run(self, command: Sequence[str]) -> ProcessResult | None:
+    def run(
+        self,
+        command: Sequence[str],
+        *,
+        duration: float = 0.0,
+        on_progress: Callable[[int], None] | None = None,
+    ) -> ProcessResult | None:
         """Run *command*, returning its result or ``None`` if cancelled."""
         ...
 

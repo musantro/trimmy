@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from tests.mothers import make_spec
@@ -34,11 +34,13 @@ class FakeBackend(RenderingBackend):
         results: list[ProcessResult | None] | None = None,
         cancelled: bool = False,
         size_mb: float = 10.0,
+        report_progress: int | None = None,
     ) -> None:
         self._gpu = gpu_encoder
         self._results = list(results or [])
         self._cancelled = cancelled
         self._size = size_mb
+        self._report_progress = report_progress
         self.commands: list[list[str]] = []
 
     @property
@@ -55,8 +57,16 @@ class FakeBackend(RenderingBackend):
         return self._gpu
 
     @override
-    def run(self, command: Sequence[str]) -> ProcessResult | None:
+    def run(
+        self,
+        command: Sequence[str],
+        *,
+        duration: float = 0.0,
+        on_progress: Callable[[int], None] | None = None,
+    ) -> ProcessResult | None:
         self.commands.append(list(command))
+        if on_progress is not None and self._report_progress is not None:
+            on_progress(self._report_progress)
         return self._results.pop(0)
 
     @override
@@ -165,21 +175,39 @@ def test_segments_single_part():
 
 def test_segments_multiple_parts_success():
     backend = FakeBackend(results=[ProcessResult(0, "")] * 3, size_mb=2.0)
-    progress: list[tuple[int, int]] = []
+    progress: list[int] = []
     spec = make_spec(trim=TrimRange(0.0, 25.0))
     result = RenderSegmentsUseCase(_presets(), backend).render(
         RenderJobRequest(
             spec=spec,
             max_duration=10.0,
-            on_progress=lambda i, t: progress.append((i, t)),
+            on_progress=progress.append,
         ),
     )
     assert result.multipart is True
     assert result.parts == 3
     assert result.total_size_mb == 6.0
-    assert progress == [(1, 3), (2, 3), (3, 3)]
+    assert progress == [0, 33, 66]
     assert result.outcomes[0].path is not None
     assert result.outcomes[0].path.endswith("_part1.mp4")
+
+
+def test_segments_multiple_parts_forwards_ffmpeg_progress():
+    backend = FakeBackend(
+        results=[ProcessResult(0, "")] * 3,
+        report_progress=50,
+    )
+    progress: list[int] = []
+    spec = make_spec(trim=TrimRange(0.0, 25.0))
+    RenderSegmentsUseCase(_presets(), backend).render(
+        RenderJobRequest(
+            spec=spec,
+            max_duration=10.0,
+            on_progress=progress.append,
+        ),
+    )
+    assert 0 in progress
+    assert any(p > 0 for p in progress)
 
 
 def test_segments_cancelled_before_first_part():

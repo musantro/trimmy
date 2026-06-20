@@ -7,7 +7,7 @@ import json
 import logging
 import subprocess
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from trimmy.rendering.domain.gateways import RenderingBackend, VideoProber
@@ -94,24 +94,79 @@ class FFmpegRenderingBackend(RenderingBackend):
         return _detect_gpu_encoder()
 
     @override
-    def run(self, command: Sequence[str]) -> ProcessResult | None:
+    def run(
+        self,
+        command: Sequence[str],
+        *,
+        duration: float = 0.0,
+        on_progress: Callable[[int], None] | None = None,
+    ) -> ProcessResult | None:
         """Run *command*, returning its result or ``None`` if cancelled."""
+        track = on_progress is not None and duration > 0
+        cmd = list(command)
+        if track:
+            cmd[1:1] = ["-progress", "pipe:1", "-nostats"]
+
         with self._lock:
             if self._cancelled:
                 return None
             self._proc = subprocess.Popen(  # noqa: S603
-                list(command),
+                cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
             )
-        _, stderr = self._proc.communicate()
+
+        if track:
+            stderr = self._read_progress(duration, on_progress)  # type: ignore[arg-type]
+        else:
+            _, stderr = self._proc.communicate()
+
         with self._lock:
             returncode = self._proc.returncode
             self._proc = None
             if self._cancelled:
                 return None
         return ProcessResult(returncode=returncode, stderr=stderr)
+
+    def _read_progress(
+        self,
+        duration: float,
+        callback: Callable[[int], None],
+    ) -> str:
+        """Read stdout for progress updates while draining stderr."""
+        proc = self._proc
+        assert proc is not None  # noqa: S101
+        assert proc.stdout is not None  # noqa: S101
+        assert proc.stderr is not None  # noqa: S101
+
+        stderr_chunks: list[str] = []
+        stderr_stream = proc.stderr
+
+        def _drain_stderr() -> None:
+            data = stderr_stream.read()
+            if data:
+                stderr_chunks.append(data)
+
+        reader = threading.Thread(target=_drain_stderr, daemon=True)
+        reader.start()
+
+        duration_us = duration * 1_000_000
+        last_pct = -1
+        for line in proc.stdout:
+            if line.startswith("out_time_us="):
+                try:
+                    us = int(line.split("=", 1)[1].strip())
+                    pct = min(100, max(0, int(us / duration_us * 100)))
+                    if pct != last_pct:
+                        last_pct = pct
+                        callback(pct)
+                except (ValueError, ZeroDivisionError):
+                    pass
+
+        proc.wait()
+        reader.join(timeout=5)
+        return "".join(stderr_chunks)
 
     @override
     def output_size_mb(self, path: Path) -> float:

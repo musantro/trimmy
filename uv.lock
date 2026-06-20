@@ -615,6 +615,15 @@ wheels = [
 ]
 
 [[package]]
+name = "qt-material-icons"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/9c/a46c5d3ee023f1cc1db86e942d45d06df6a07042f229ef97e75b0a873986/qt_material_icons-0.5.0.tar.gz", hash = "sha256:ea0e73c0f7299d5a01f6df3e2d65032575c2cb11c2334cf26eb370760a72ee45", size = 20646803, upload-time = "2026-03-06T23:41:47.225Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fd/83/afc510c27980bf7aeacd0ff5b93a99df423d06911d5c86f93a547914008c/qt_material_icons-0.5.0-py3-none-any.whl", hash = "sha256:a71786eb211cd42fb640cfda2f6f7140065264d5b0ea97ad2bc63f5a0fc3dd83", size = 21156806, upload-time = "2026-03-06T23:41:44.425Z" },
+]
+
+[[package]]
 name = "questionary"
 version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -737,10 +746,11 @@ wheels = [
 
 [[package]]
 name = "trimmy"
-version = "0.8.0"
+version = "0.8.1"
 source = { editable = "." }
 dependencies = [
     { name = "pyside6" },
+    { name = "qt-material-icons" },
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
 ]
 
@@ -757,6 +767,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "pyside6", specifier = ">=6.5" },
+    { name = "qt-material-icons", specifier = ">=0.5.0" },
     { name = "typing-extensions", marker = "python_full_version < '3.12'", specifier = ">=4.0" },
 ]
 
