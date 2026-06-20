@@ -1,3 +1,9 @@
+## v0.8.0 (2026-06-20)
+
+### Feat
+
+- **app**: show version in footer status bar
+
 ## v0.7.0 (2026-06-19)
 
 ### Feat
