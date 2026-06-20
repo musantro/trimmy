@@ -47,7 +47,13 @@ class _Backend(RenderingBackend):
         return None
 
     @override
-    def run(self, command: Sequence[str]) -> ProcessResult | None:
+    def run(
+        self,
+        command: Sequence[str],
+        *,
+        duration: float = 0.0,
+        on_progress: object = None,
+    ) -> ProcessResult | None:
         return self._results.pop(0)
 
     @override
@@ -79,15 +85,12 @@ def test_start_rendering_publishes_progress_for_each_part():
     backend = _Backend([ProcessResult(0, "")] * 3)
     _coordinator(bus, backend)
 
-    progress: list[tuple[int, int]] = []
-    bus.subscribe(
-        RenderProgressed,
-        lambda event: progress.append((event.current, event.total)),
-    )
+    progress: list[int] = []
+    bus.subscribe(RenderProgressed, lambda event: progress.append(event.pct))
 
     bus.publish(StartRendering(make_spec(trim=TrimRange(0.0, 25.0)), max_duration=10))
 
-    assert progress == [(1, 3), (2, 3), (3, 3)]
+    assert progress == [0, 33, 66]
 
 
 def test_stop_rendering_cancels_the_backend():

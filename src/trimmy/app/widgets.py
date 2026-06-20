@@ -63,8 +63,8 @@ _HANDLE_HIT_RADIUS = 10
 _HANDLE_SIZE = 10
 
 _CROP_COLORS: list[tuple[CropPosition, str]] = [
-    (CropPosition.TOP, Colors.PRIMARY),
-    (CropPosition.BOTTOM, Colors.TERTIARY),
+    (CropPosition.TOP, Colors.TERTIARY),
+    (CropPosition.BOTTOM, Colors.PRIMARY_CONTAINER),
 ]
 
 
@@ -95,7 +95,7 @@ class CropWidget(QWidget):
         self._vid_oy: float = 0.0
         self._vid_scale: float = 1.0
 
-        self.setMouseTracking(True)  # noqa: FBT003
+        self.setMouseTracking(True)
         self.setMinimumSize(400, 250)
         self.setSizePolicy(
             QSizePolicy.Expanding,  # ty: ignore[unresolved-attribute]
@@ -138,7 +138,7 @@ class CropWidget(QWidget):
     # ---- painting ----
 
     @override
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Draw the video frame and crop overlays."""
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)  # ty: ignore[unresolved-attribute]
@@ -186,9 +186,9 @@ class CropWidget(QWidget):
         p.setBrush(fill)
         p.drawRect(r)
 
-        font = QFont()
-        font.setBold(True)  # noqa: FBT003
-        font.setPointSize(11)
+        font = QFont(Typography.MONO)
+        font.setPixelSize(Typography.LABEL_MD_SIZE)
+        font.setWeight(QFont.Weight(Typography.LABEL_MD_WEIGHT))
         p.setFont(font)
         p.setPen(color)
         p.drawText(r, Qt.AlignCenter, position.value.upper())  # ty: ignore[unresolved-attribute]
@@ -237,7 +237,7 @@ class CropWidget(QWidget):
     # ---- mouse interaction ----
 
     @override
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         """Begin a drag on a crop handle or body."""
         if self.source.width == 0:
             return
@@ -268,7 +268,7 @@ class CropWidget(QWidget):
         self._drag_origin = self.selection.get(position)
 
     @override
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Update the active crop rectangle while dragging."""
         pos = event.position()
 
@@ -311,7 +311,7 @@ class CropWidget(QWidget):
         self.crops_changed.emit()
 
     @override
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         """End the current drag operation."""
         self._drag_position = None
         self._drag_handle = None
@@ -339,13 +339,31 @@ class PreviewWidget(QWidget):
 
     split_ratio_changed = Signal(float)
 
+    ASPECT_W = 9
+    ASPECT_H = 16
+
     def __init__(self) -> None:
         super().__init__()
-        self.setFixedSize(270, 480)
+        self.setMinimumSize(90, 160)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)  # ty: ignore[unresolved-attribute]
         self.frame: QImage | None = None
         self.selection = CropSelection(top=CropRect(), bottom=CropRect())
         self.split_ratio: float = 0.5
         self._dragging: bool = False
+        self.dimmed: bool = False
+        self.interactive: bool = True
+
+    def _preview_rect(self) -> QRectF:
+        """Return the centered 9:16 rect that fits inside the widget."""
+        w = self.width()
+        h = self.height()
+        fit_w = int(h * self.ASPECT_W / self.ASPECT_H)
+        fit_h = int(w * self.ASPECT_H / self.ASPECT_W)
+        if fit_w <= w:
+            x = (w - fit_w) / 2
+            return QRectF(x, 0, fit_w, h)
+        y = (h - fit_h) / 2
+        return QRectF(0, y, w, fit_h)
 
     def set_frame(self, image: QImage) -> None:
         """Update the preview source frame."""
@@ -358,22 +376,27 @@ class PreviewWidget(QWidget):
         self.update()
 
     @override
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Render the composited preview with a split bar."""
         p = QPainter(self)
         p.setRenderHint(QPainter.SmoothPixmapTransform)  # ty: ignore[unresolved-attribute]
         p.fillRect(self.rect(), QColor(Colors.LEVEL_0))
 
+        r = self._preview_rect()
         if self.frame is None:
+            border = QColor(Colors.LEVEL_1_BORDER)
+            p.setPen(QPen(border, 2))
+            p.setBrush(Qt.NoBrush)  # ty: ignore[unresolved-attribute]
+            p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 8, 8)
             return
 
-        top_h = int(self.height() * self.split_ratio)
-        bot_h = self.height() - top_h
+        top_h = int(r.height() * self.split_ratio)
+        bot_h = int(r.height()) - top_h
 
         tc = self.selection.top
         if not tc.is_empty:
             p.drawImage(
-                QRectF(0, 0, self.width(), top_h),
+                QRectF(r.x(), r.y(), r.width(), top_h),
                 self.frame,
                 QRectF(tc.x, tc.y, tc.w, tc.h),
             )
@@ -381,49 +404,59 @@ class PreviewWidget(QWidget):
         bc = self.selection.bottom
         if not bc.is_empty:
             p.drawImage(
-                QRectF(0, top_h, self.width(), bot_h),
+                QRectF(r.x(), r.y() + top_h, r.width(), bot_h),
                 self.frame,
                 QRectF(bc.x, bc.y, bc.w, bc.h),
             )
 
-        p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
-        p.setBrush(QColor(Colors.PRIMARY))
-        p.drawRect(QRectF(0, top_h - 3, self.width(), 6))
+        if self.interactive:
+            p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
+            p.setBrush(QColor(Colors.PRIMARY))
+            p.drawRect(QRectF(r.x(), r.y() + top_h - 3, r.width(), 6))
 
         border = QColor(Colors.LEVEL_1_BORDER)
         p.setPen(QPen(border, 2))
         p.setBrush(Qt.NoBrush)  # ty: ignore[unresolved-attribute]
-        p.drawRoundedRect(
-            self.rect().adjusted(1, 1, -1, -1),
-            8,
-            8,
-        )
+        p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 8, 8)
+
+        if self.dimmed:
+            p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
+            p.setBrush(QColor(0, 0, 0, 160))
+            p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 8, 8)
 
     @override
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         """Start dragging the split bar if the click is near it."""
-        top_h = self.height() * self.split_ratio
+        if not self.interactive:
+            return
+        r = self._preview_rect()
+        top_h = r.y() + r.height() * self.split_ratio
         if abs(event.position().y() - top_h) < 12:
             self._dragging = True
 
     @override
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Drag the split bar or update the cursor."""
+        if not self.interactive:
+            return
+        r = self._preview_rect()
+        top_h = r.y() + r.height() * self.split_ratio
         if not self._dragging:
-            top_h = self.height() * self.split_ratio
             if abs(event.position().y() - top_h) < 12:
                 self.setCursor(Qt.SplitVCursor)  # ty: ignore[unresolved-attribute]
             else:
                 self.setCursor(Qt.ArrowCursor)  # ty: ignore[unresolved-attribute]
             return
-        ratio = event.position().y() / self.height()
+        ratio = (event.position().y() - r.y()) / r.height()
         self.split_ratio = max(0.15, min(0.85, ratio))
         self.update()
         self.split_ratio_changed.emit(self.split_ratio)
 
     @override
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         """End the split-bar drag."""
+        if not self.interactive:
+            return
         self._dragging = False
 
 
@@ -485,7 +518,7 @@ class TimelineWidget(QWidget):
         return max(0.0, min(self.duration, pct * self.duration))
 
     @override
-    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Draw the timeline bar, trim region, handles, and playhead."""
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)  # ty: ignore[unresolved-attribute]
@@ -552,7 +585,7 @@ class TimelineWidget(QWidget):
         return f"{m}:{sec:04.1f}"
 
     @override
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         """Begin dragging a trim handle or seek to click position."""
         x = event.position().x()
         sx = self._t2x(self.trim_start)
@@ -565,7 +598,7 @@ class TimelineWidget(QWidget):
             self.seek_requested.emit(self._x2t(x))
 
     @override
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Adjust the trim range while dragging a handle."""
         if self._dragging is None:
             return
@@ -586,6 +619,6 @@ class TimelineWidget(QWidget):
         self.range_changed.emit(self.trim_start, self.trim_end)
 
     @override
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         """End the trim-handle drag."""
         self._dragging = None

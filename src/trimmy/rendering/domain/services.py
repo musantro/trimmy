@@ -63,6 +63,7 @@ class SegmentPlanner:
             )
         return segments
 
+
 _NVENC_PRESET = {
     "slower": "p7",
     "slow": "p6",

@@ -18,6 +18,7 @@ from PySide6.QtGui import (
     QDragEnterEvent,
     QDragLeaveEvent,
     QDropEvent,
+    QFont,
     QImage,
     QKeyEvent,
 )
@@ -31,12 +32,9 @@ from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QHBoxLayout,
-    QLabel,
     QMainWindow,
-    QMenu,
     QMessageBox,
-    QPushButton,
-    QStatusBar,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -45,10 +43,8 @@ from trimmy import __version__
 from trimmy.app.components import (
     DropOverlay,
     KeybindingsDialog,
-    SectionLabel,
-    StatusLabel,
-    ToggleButtonGroup,
-    VolumeControl,
+    SidebarNavigation,
+    TopNavBar,
 )
 from trimmy.app.preferences.application.load_preferences_use_case import (
     LoadPreferencesUseCase,
@@ -60,12 +56,10 @@ from trimmy.app.preferences.domain.models import Preferences
 from trimmy.app.preferences.infrastructure.json_preferences_repository import (
     JsonPreferencesRepository,
 )
-from trimmy.app.theme import Spacing, build_stylesheet
-from trimmy.app.widgets import (
-    CropWidget,
-    PreviewWidget,
-    TimelineWidget,
-)
+from trimmy.app.theme import Typography, build_stylesheet, load_fonts
+from trimmy.app.views.editor_view import EditorView
+from trimmy.app.views.render_view import RenderView
+from trimmy.app.views.startup_view import StartupView
 from trimmy.editing.crop.domain.services import AspectRatioCalculator
 from trimmy.editing.shared.domain.models import CropSelection
 from trimmy.editing.trim.application.set_trim_end_use_case import (
@@ -77,10 +71,6 @@ from trimmy.editing.trim.application.set_trim_start_use_case import (
     SetTrimStartUseCase,
 )
 from trimmy.rendering.application.coordinator import RenderCoordinator
-from trimmy.rendering.application.plan_segments_use_case import (
-    PlanSegmentsRequest,
-    PlanSegmentsUseCase,
-)
 from trimmy.rendering.application.probe_video_use_case import (
     ProbeVideoRequest,
     ProbeVideoUseCase,
@@ -115,17 +105,13 @@ from trimmy.shared.infrastructure.pyside_event_bus import PySideEventBus
 
 logger = logging.getLogger(__name__)
 
+_VIEW_STARTUP = 0
+_VIEW_EDITOR = 1
+_VIEW_RENDER = 2
+
 
 class RenderWorker(QThread):
-    """
-    Runs the render pipeline off the GUI thread, bridging events to *bus*.
-
-    The blocking work is driven by the same :class:`RenderCoordinator` the
-    rendering context uses everywhere: the worker owns a private synchronous
-    bus, lets the coordinator handle the ``StartRendering`` command on this
-    thread, and forwards the resulting events onto the GUI bus (whose queued
-    Qt signal hops them back to the GUI thread).
-    """
+    """Runs the render pipeline off the GUI thread, bridging events to *bus*."""
 
     def __init__(
         self,
@@ -144,7 +130,7 @@ class RenderWorker(QThread):
         self._backend.cancel()
 
     @override
-    def run(self) -> None:  # noqa: D102
+    def run(self) -> None:
         local = InMemoryEventBus()
         use_case = RenderSegmentsUseCase(self._presets, self._backend)
         RenderCoordinator(local, use_case, self._backend)
@@ -168,7 +154,6 @@ class MainWindow(QMainWindow):
         self._format_selector = FormatSelector()
         self._aspect_calculator = AspectRatioCalculator()
         self._probe = ProbeVideoUseCase(FFprobeVideoProber())
-        self._plan_segments = PlanSegmentsUseCase()
         self._prefs_repository = JsonPreferencesRepository()
 
         self.video_info: VideoMetadata | None = None
@@ -189,6 +174,9 @@ class MainWindow(QMainWindow):
         self._bus.subscribe(RenderCompleted, self._on_render_completed)
         self._render_worker: RenderWorker | None = None
         self._render_out_path: str | None = None
+        self._preview_player: QMediaPlayer | None = None
+        self._preview_audio: QAudioOutput | None = None
+        self._preview_sink: QVideoSink | None = None
 
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
@@ -202,134 +190,127 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
 
+        self._editor_view.platform_selector.blockSignals(True)  # noqa: FBT003
+        self._editor_view.platform_selector.set_platform(self.selected_platform)
+        if self.selected_format:
+            self._editor_view.platform_selector.set_format(
+                self.selected_platform,
+                self.selected_format,
+            )
+        self._editor_view.platform_selector.blockSignals(False)  # noqa: FBT003
+
         if file_path:
             self.open_file(file_path)
 
     # ---- UI construction ----
 
-    def _build_ui(self) -> None:  # noqa: PLR0915
+    def _build_ui(self) -> None:
         central = QWidget()
         central.setObjectName("central")
         self.setCentralWidget(central)
-        root = QHBoxLayout(central)
-        root.setSpacing(Spacing.MD)
-        root.setContentsMargins(Spacing.MD, Spacing.MD, Spacing.MD, Spacing.MD)
 
-        left = QVBoxLayout()
-        left.setSpacing(Spacing.SM)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        self.crop_widget = CropWidget()
-        left.addWidget(self.crop_widget, stretch=1)
+        # Top navigation bar
+        self._top_nav = TopNavBar(version_text=f"v{__version__}")
+        self._top_nav.help_clicked.connect(self._show_keybindings_help)
+        root.addWidget(self._top_nav)
 
-        self.timeline = TimelineWidget()
-        left.addWidget(self.timeline)
+        # Body: sidebar + stacked views
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
 
-        # playback row
-        pb = QHBoxLayout()
-        self.play_btn = QPushButton("Play")
-        self.play_btn.setFixedWidth(70)
-        self.play_btn.clicked.connect(self._toggle_play)
-        self.time_label = QLabel("0:00 / 0:00")
-        pb.addWidget(self.play_btn)
-        pb.addWidget(self.time_label)
-        pb.addStretch()
+        self._sidebar = SidebarNavigation()
+        self._sidebar.nav_changed.connect(self._on_nav_changed)
+        self._sidebar.shortcuts_requested.connect(self._show_keybindings_help)
+        self._sidebar.hide()
+        body.addWidget(self._sidebar)
 
-        self.volume_control = VolumeControl(initial_volume=self._volume)
-        self.volume_control.volume_changed.connect(self._on_volume_changed)
-        pb.addWidget(self.volume_control)
+        self._stack = QStackedWidget()
 
-        left.addLayout(pb)
+        # Index 0: Startup view
+        self._startup_view = StartupView()
+        self._startup_view.open_requested.connect(self._open_dialog)
+        self._stack.addWidget(self._startup_view)
 
-        # platform row
-        left.addWidget(SectionLabel("Platform"))
-        self._platform_group = ToggleButtonGroup(
-            options=[
-                ("instagram", "Instagram"),
-                ("tiktok", "TikTok"),
-                ("twitter", "Twitter / X"),
-                ("whatsapp", "WhatsApp"),
-                ("telegram", "Telegram"),
-            ],
-            selected=self.selected_platform,
+        # Index 1: Editor view
+        self._editor_view = EditorView()
+        self._editor_view.crop_widget.crops_changed.connect(self._on_crops_changed)
+        self._editor_view.preview.split_ratio_changed.connect(self._on_split_changed)
+        self._editor_view.preview.split_ratio = self.split_ratio
+        self._editor_view.timeline.range_changed.connect(self._on_range_changed)
+        self._editor_view.timeline.seek_requested.connect(self._on_seek)
+        self._editor_view.playback.play_clicked.connect(self._toggle_play)
+        self._editor_view.playback.skip_prev_clicked.connect(
+            lambda: self.player.setPosition(max(0, self.player.position() - 5000)),
         )
-        self._platform_group.selection_changed.connect(self._on_platform_click)
-        left.addWidget(self._platform_group)
-
-        # quality row
-        qual = QHBoxLayout()
-        qual.addWidget(QLabel("Quality:"))
-        self._quality_group = ToggleButtonGroup(
-            options=[("max", "Max"), ("optimized", "Optimized")],
-            selected=self.selected_quality,
+        self._editor_view.playback.skip_next_clicked.connect(
+            lambda: self.player.setPosition(
+                min(
+                    int((self.video_info.duration if self.video_info else 0) * 1000),
+                    self.player.position() + 5000,
+                ),
+            ),
         )
-        self._quality_group.selection_changed.connect(self._select_quality)
-        qual.addWidget(self._quality_group)
-        qual.addStretch()
-        left.addLayout(qual)
-
-        self.info_label = QLabel()
-        self.info_label.setObjectName("info")
-        self.info_label.setWordWrap(True)  # noqa: FBT003
-        left.addWidget(self.info_label)
-        self._update_info()
-
-        # action row
-        act = QHBoxLayout()
-        self.render_btn = QPushButton("Render Video")
-        self.render_btn.setObjectName("render")
-        self.render_btn.clicked.connect(self._render)
-        self.stop_btn = QPushButton("Stop Render")
-        self.stop_btn.setObjectName("stop")
-        self.stop_btn.clicked.connect(self._stop_render)
-        self.stop_btn.setVisible(False)  # noqa: FBT003
-        self.open_btn = QPushButton("Open Video")
-        self.open_btn.clicked.connect(self._open_dialog)
-        act.addWidget(self.render_btn)
-        act.addWidget(self.stop_btn)
-        act.addWidget(self.open_btn)
-        act.addStretch()
-        left.addLayout(act)
-
-        self.status_label = StatusLabel()
-        left.addWidget(self.status_label)
-
-        # right panel
-        right = QVBoxLayout()
-        right.setSpacing(Spacing.SM)
-        right.addWidget(SectionLabel("Preview (9:16)"))
-        self.preview = PreviewWidget()
-        self.preview.split_ratio = self.split_ratio
-        right.addWidget(self.preview, alignment=Qt.AlignHCenter)  # ty: ignore[unresolved-attribute]
-        pct = int(self.split_ratio * 100)
-        self.split_label = QLabel(
-            f"Split: {pct}% / {100 - pct}% — Drag the red bar to adjust",
+        self._editor_view.volume_control.volume_changed.connect(self._on_volume_changed)
+        self._editor_view.volume_control.set_volume(self._volume)
+        self._editor_view.render_btn.clicked.connect(self._render)
+        self._editor_view.stop_btn.clicked.connect(self._stop_render)
+        self._editor_view.platform_selector.platform_changed.connect(
+            self._on_platform_changed,
         )
-        self.split_label.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]
-        self.split_label.setObjectName("info")
-        right.addWidget(self.split_label)
-        right.addStretch()
-
-        root.addLayout(left, stretch=3)
-        root.addLayout(right, stretch=0)
-
-        # signals
-        self.crop_widget.crops_changed.connect(self._on_crops_changed)
-        self.preview.split_ratio_changed.connect(
-            self._on_split_changed,
+        self._editor_view.platform_selector.format_changed.connect(
+            self._on_format_changed,
         )
-        self.timeline.range_changed.connect(self._on_range_changed)
-        self.timeline.seek_requested.connect(self._on_seek)
+        self._stack.addWidget(self._editor_view)
 
-        # drop overlay (parented to central so it covers everything)
-        self._drop_overlay = DropOverlay(central)
+        # Index 2: Render view
+        self._render_view = RenderView()
+        self._render_view.cancel_requested.connect(self._stop_render)
+        self._render_view.done_requested.connect(self._on_render_done)
+        self._stack.addWidget(self._render_view)
+
+        self._stack.setCurrentIndex(_VIEW_STARTUP)
+        body.addWidget(self._stack)
+
+        root.addLayout(body)
+
+        # Drop overlay parented to the stacked widget
+        self._drop_overlay = DropOverlay(self._stack)
         self._drop_overlay.hide()
 
-        # footer status bar with the app version floated to the right
-        status_bar = QStatusBar()
-        self.setStatusBar(status_bar)
-        self.version_label = QLabel(f"v{__version__}")
-        self.version_label.setObjectName("version")
-        status_bar.addPermanentWidget(self.version_label)
+    # ---- navigation ----
+
+    def _on_nav_changed(self, name: str) -> None:
+        if name == "open":
+            if not self.video_info:
+                self._switch_to_view(_VIEW_STARTUP)
+            else:
+                self._open_dialog()
+        elif name == "edit":
+            if self.video_info:
+                self._switch_to_view(_VIEW_EDITOR)
+            else:
+                self._switch_to_view(_VIEW_STARTUP)
+        elif name == "render":
+            if self._render_worker is not None and self._render_worker.isRunning():
+                self._switch_to_view(_VIEW_RENDER)
+            else:
+                self._sidebar.set_active("edit" if self.video_info else "open")
+
+    def _switch_to_view(self, index: int) -> None:
+        self._stack.setCurrentIndex(index)
+        if index == _VIEW_STARTUP:
+            self._sidebar.hide()
+        else:
+            self._sidebar.show()
+            if index == _VIEW_EDITOR:
+                self._sidebar.set_active("edit")
+            elif index == _VIEW_RENDER:
+                self._sidebar.set_active("render")
 
     # ---- file open ----
 
@@ -367,10 +348,10 @@ class MainWindow(QMainWindow):
         self.video_info = info
         self._source_path = path
 
-        self.crop_widget.set_source_size(info.width, info.height)
-        self.crop_widget.init_crops()
+        self._editor_view.crop_widget.set_source_size(info.width, info.height)
+        self._editor_view.crop_widget.init_crops()
         self._restore_crops()
-        self.timeline.set_duration(info.duration)
+        self._editor_view.timeline.set_duration(info.duration)
         self._update_crop_aspects()
 
         self._waiting_first_frame = True
@@ -378,7 +359,9 @@ class MainWindow(QMainWindow):
         self.player.play()
 
         self.setWindowTitle(f"Trimmy — {path.name}")
-        self.status_label.clear()
+
+        self._switch_to_view(_VIEW_EDITOR)
+        self._sidebar.set_active("edit")
 
     # ---- media player callbacks ----
 
@@ -389,8 +372,8 @@ class MainWindow(QMainWindow):
         if img.format() != QImage.Format.Format_ARGB32:
             img = img.convertToFormat(QImage.Format.Format_ARGB32)
         self.current_frame = img
-        self.crop_widget.set_frame(img)
-        self.preview.set_frame(img)
+        self._editor_view.crop_widget.set_frame(img)
+        self._editor_view.preview.set_frame(img)
 
         if self._waiting_first_frame:
             self._waiting_first_frame = False
@@ -398,17 +381,13 @@ class MainWindow(QMainWindow):
 
     def _on_position(self, ms: int) -> None:
         sec = ms / 1000.0
-        self.timeline.set_position(sec)
-        if self.video_info:
-            self.time_label.setText(
-                f"{self._fmt(sec)} / {self._fmt(self.video_info.duration)}",
+        self._editor_view.timeline.set_position(sec)
+        if self.video_info and sec >= self._editor_view.timeline.trim_end:
+            self.player.pause()
+            self.player.setPosition(
+                int(self._editor_view.timeline.trim_start * 1000),
             )
-            if sec >= self.timeline.trim_end:
-                self.player.pause()
-                self.player.setPosition(
-                    int(self.timeline.trim_start * 1000),
-                )
-                self.play_btn.setText("Play")
+            self._editor_view.playback.set_playing(playing=False)
 
     # ---- playback ----
 
@@ -418,15 +397,18 @@ class MainWindow(QMainWindow):
             return
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
-            self.play_btn.setText("Play")
+            self._editor_view.playback.set_playing(playing=False)
         else:
             pos_sec = self.player.position() / 1000.0
-            if pos_sec < self.timeline.trim_start or pos_sec >= self.timeline.trim_end:
+            if (
+                pos_sec < self._editor_view.timeline.trim_start
+                or pos_sec >= self._editor_view.timeline.trim_end
+            ):
                 self.player.setPosition(
-                    int(self.timeline.trim_start * 1000),
+                    int(self._editor_view.timeline.trim_start * 1000),
                 )
             self.player.play()
-            self.play_btn.setText("Pause")
+            self._editor_view.playback.set_playing(playing=True)
 
     # ---- volume ----
 
@@ -440,19 +422,15 @@ class MainWindow(QMainWindow):
         self.player.setPosition(int(sec * 1000))
 
     def _on_range_changed(self, start: float, end: float) -> None:
-        self._update_info()
+        pass
 
     # ---- crops & preview ----
 
     def _on_crops_changed(self) -> None:
-        self.preview.set_selection(self.crop_widget.selection)
+        self._editor_view.preview.set_selection(self._editor_view.crop_widget.selection)
 
     def _on_split_changed(self, ratio: float) -> None:
         self.split_ratio = ratio
-        pct = int(ratio * 100)
-        self.split_label.setText(
-            f"Split: {pct}% / {100 - pct}% — Drag the red bar to adjust",
-        )
         self._update_crop_aspects()
 
     def _update_crop_aspects(self) -> None:
@@ -468,105 +446,26 @@ class MainWindow(QMainWindow):
             out_h,
             self.split_ratio,
         )
-        self.crop_widget.set_crop_aspects(aspects.top, aspects.bottom)
+        self._editor_view.crop_widget.set_crop_aspects(aspects.top, aspects.bottom)
         self._on_crops_changed()
 
-    # ---- platform / quality ----
+    # ---- platform / format ----
 
-    def _on_platform_click(self, name: str) -> None:
-        formats = self._presets.formats(name)
-        if len(formats) == 1:
-            self._select_platform(name, formats[0].key)
-            return
-        btn = self._platform_group.button(name)
-        btn.setChecked(name == self.selected_platform)
-        menu = QMenu(self)
-        for fmt in formats:
-            if fmt.max_duration is not None:
-                dur_text = self._fmt_max_duration(fmt.max_duration)
-                action = menu.addAction(
-                    f"{fmt.label}  (max {dur_text})",
-                )
-            else:
-                action = menu.addAction(
-                    f"{fmt.label}  (no time limit)",
-                )
-            action.triggered.connect(
-                lambda _, n=name, f=fmt.key: self._select_platform(n, f),
-            )
-        menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))  # ty: ignore[invalid-argument-type]
-
-    def _select_platform(
-        self,
-        name: str,
-        format_key: str | None = None,
-    ) -> None:
+    def _on_platform_changed(self, name: str) -> None:
         self.selected_platform = name
-        if format_key is None:
-            format_key = self._presets.formats(name)[0].key
-        self.selected_format = format_key
-        self._platform_group.set_selected(name)
+        formats = self._presets.formats(name)
+        if formats:
+            self.selected_format = formats[0].key
         self._update_crop_aspects()
-        self._update_info()
+
+    def _on_format_changed(self, platform: str, format_key: str) -> None:
+        self.selected_format = format_key
 
     def _get_format(self, platform: str, format_key: str) -> PlatformFormat:
         return self._format_selector.select(
             self._presets.formats(platform),
             format_key,
         )
-
-    @staticmethod
-    def _fmt_max_duration(seconds: int) -> str:
-        if seconds >= 3600:
-            h = seconds // 3600
-            m = (seconds % 3600) // 60
-            return f"{h}h" if m == 0 else f"{h}h {m}m"
-        if seconds >= 60:
-            m = seconds // 60
-            s = seconds % 60
-            return f"{m} min" if s == 0 else f"{m}m {s}s"
-        return f"{seconds}s"
-
-    def _select_quality(self, q: str) -> None:
-        self.selected_quality = q
-        self._quality_group.set_selected(q)
-        self._update_crop_aspects()
-        self._update_info()
-
-    def _update_info(self) -> None:
-        info = self._presets.display_info(
-            self.selected_platform,
-            self.selected_quality,
-        )
-        fmt = self._get_format(self.selected_platform, self.selected_format)
-        fps_text = f"up to {info.max_fps} fps"
-        if self.video_info:
-            src_fps = self.video_info.fps
-            if src_fps <= info.max_fps:
-                fps_text = f"{src_fps} fps (original)"
-            else:
-                fps_text = f"{info.max_fps} fps (capped from {src_fps})"
-        text = (
-            f"{info.res}  ·  {info.codec}  ·  "
-            f"{fps_text}  ·  {info.audio}\n"
-            f"{info.bitrate}  ·  Max {info.max_size}"
-            f"  ·  {info.note}"
-        )
-        if fmt.max_duration is not None:
-            dur_text = self._fmt_max_duration(fmt.max_duration)
-            text += f"\nFormat: {fmt.label} (max {dur_text})"
-            if self.video_info:
-                segments = self._plan_segments.plan(
-                    PlanSegmentsRequest(
-                        self.timeline.trim_range,
-                        fmt.max_duration,
-                    ),
-                )
-                if len(segments) > 1:
-                    text += f"  ·  Will split into {len(segments)} parts"
-        else:
-            text += f"\nFormat: {fmt.label} (no time limit)"
-        self.info_label.setText(text)
 
     # ---- render ----
 
@@ -589,17 +488,14 @@ class MainWindow(QMainWindow):
         if not out_path:
             return
 
-        self.render_btn.setEnabled(False)  # noqa: FBT003
-        self.stop_btn.setVisible(True)  # noqa: FBT003
-        self.status_label.set_info(
-            "Rendering... this may take a while",
-        )
+        self._editor_view.render_btn.setEnabled(False)
+        self._editor_view.stop_btn.setVisible(True)
 
         spec = RenderSpec(
             source_path=src,
             output_path=Path(out_path),
-            trim=self.timeline.trim_range,
-            crops=self.crop_widget.selection,
+            trim=self._editor_view.timeline.trim_range,
+            crops=self._editor_view.crop_widget.selection,
             split_ratio=self.split_ratio,
             platform=self.selected_platform,
             quality=self.selected_quality,
@@ -607,6 +503,10 @@ class MainWindow(QMainWindow):
         )
         self._render_out_path = out_path
         self._bus.publish(StartRendering(spec, max_duration))
+
+        self._render_view.set_platform_info(self.selected_platform, 0)
+        self._switch_to_view(_VIEW_RENDER)
+        self._start_render_preview()
 
     def _on_start_rendering(self, command: StartRendering) -> None:
         """Launch the render worker for *command* off the GUI thread."""
@@ -619,19 +519,25 @@ class MainWindow(QMainWindow):
             self._render_worker.stop()
 
     def _on_render_progressed(self, event: RenderProgressed) -> None:
-        self.status_label.set_info(
-            f"Rendering part {event.current} of {event.total}...",
-        )
+        self._render_view.set_global_progress(event.pct, "Rendering...")
+        self._render_view.set_platform_info(self.selected_platform, event.pct)
 
     def _on_render_completed(self, event: RenderCompleted) -> None:
         result = event.result
-        out_path = self._render_out_path or ""
-        self.render_btn.setEnabled(True)  # noqa: FBT003
-        self.stop_btn.setVisible(False)  # noqa: FBT003
+        self._editor_view.render_btn.setEnabled(True)
+        self._editor_view.stop_btn.setVisible(False)
 
         if result.is_cancelled:
-            self.status_label.set_warning("Render stopped.")
+            self._stop_render_preview()
+            self._render_view.reset()
+            self._switch_to_view(_VIEW_EDITOR)
             return
+
+        self._render_view.set_global_progress(100, "Render complete!")
+        self._render_view.set_platform_info(self.selected_platform, 100)
+        self._render_view.show_done()
+        self._render_view.preview.dimmed = False
+        self._render_view.preview.update()
 
         if result.multipart:
             self._show_multipart_result(result)
@@ -639,40 +545,93 @@ class MainWindow(QMainWindow):
 
         outcome = result.first
         if outcome.is_failed:
-            self.status_label.set_error(f"Error: {(outcome.error or '')[:300]}")
             return
-        self.status_label.set_success(
-            f"Done! {outcome.resolution}  ·  "
-            f"{outcome.fps} fps  ·  "
-            f"{outcome.size_mb} MB  ·  "
-            f"{outcome.encoder}  ->  {out_path}",
+
+    def _on_render_done(self) -> None:
+        """Navigate back to editor after user clicks Done on render view."""
+        self._stop_render_preview()
+        self._render_view.reset()
+        self._switch_to_view(_VIEW_EDITOR)
+
+    def _start_render_preview(self) -> None:
+        """Play the source video in a muted loop inside the render view preview."""
+        if self._source_path is None:
+            return
+
+        self._render_view.preview.set_selection(
+            self._editor_view.crop_widget.selection,
+        )
+        self._render_view.preview.split_ratio = self.split_ratio
+
+        self._preview_trim_start_ms = int(
+            self._editor_view.timeline.trim_start * 1000,
+        )
+        self._preview_trim_end_ms = int(
+            self._editor_view.timeline.trim_end * 1000,
         )
 
-    def _show_multipart_result(self, result: RenderJobResult) -> None:
-        failures = result.failures
-        if failures:
-            first = failures[0]
-            self.status_label.set_error(
-                f"Error in part {first.index}: {(first.error or '')[:300]}",
-            )
-            return
-        first = result.first
-        self.status_label.set_success(
-            f"Done! {result.parts} parts  ·  "
-            f"{first.resolution}  ·  "
-            f"{first.fps} fps  ·  "
-            f"Total {result.total_size_mb} MB  ·  {first.encoder}",
+        self._preview_audio = QAudioOutput()
+        self._preview_audio.setVolume(0.0)
+
+        self._preview_player = QMediaPlayer()
+        self._preview_player.setAudioOutput(self._preview_audio)
+
+        self._preview_sink = QVideoSink()
+        self._preview_player.setVideoSink(self._preview_sink)
+        self._preview_sink.videoFrameChanged.connect(self._on_preview_frame)
+        self._preview_player.positionChanged.connect(self._on_preview_position)
+        self._preview_player.mediaStatusChanged.connect(self._on_preview_status)
+
+        self._render_view.preview.dimmed = True
+        self._preview_player.setSource(
+            QUrl.fromLocalFile(str(self._source_path)),
         )
+
+    def _stop_render_preview(self) -> None:
+        """Stop and clean up the render preview player."""
+        if self._preview_player is not None:
+            self._preview_player.stop()
+            self._preview_player = None
+        self._preview_audio = None
+        self._preview_sink = None
+
+    def _on_preview_frame(self, frame: QVideoFrame) -> None:
+        img = frame.toImage()
+        if img.isNull():
+            return
+        if img.format() != QImage.Format.Format_ARGB32:
+            img = img.convertToFormat(QImage.Format.Format_ARGB32)
+        self._render_view.preview.set_frame(img)
+
+    def _on_preview_position(self, ms: int) -> None:
+        if self._preview_player is None:
+            return
+        if ms < self._preview_trim_start_ms or ms >= self._preview_trim_end_ms:
+            self._preview_player.setPosition(self._preview_trim_start_ms)
+
+    def _on_preview_status(self, status: QMediaPlayer.MediaStatus) -> None:
+        if self._preview_player is None:
+            return
+        if status in (
+            QMediaPlayer.MediaStatus.LoadedMedia,
+            QMediaPlayer.MediaStatus.EndOfMedia,
+        ):
+            self._preview_player.setPosition(self._preview_trim_start_ms)
+            self._preview_player.play()
+
+    def _show_multipart_result(self, result: RenderJobResult) -> None:
+        pass
 
     def _stop_render(self) -> None:
         self._bus.publish(StopRendering())
 
     @override
-    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
+    def closeEvent(self, event: QCloseEvent) -> None:
         """Shut down the render worker and save config on exit."""
         if self._render_worker is not None and self._render_worker.isRunning():
             self._render_worker.stop()
             self._render_worker.wait()
+        self._stop_render_preview()
         self.player.stop()
         self._save_config()
         super().closeEvent(event)
@@ -684,21 +643,23 @@ class MainWindow(QMainWindow):
             selected_quality=self.selected_quality,
             split_ratio=self.split_ratio,
             volume=self._volume,
-            crops=self.crop_widget.selection,
+            crops=self._editor_view.crop_widget.selection,
         )
         SavePreferencesUseCase(self._prefs_repository).save(preferences)
 
     def _restore_crops(self) -> None:
         saved = self._prefs.crops
-        current = self.crop_widget.selection
+        current = self._editor_view.crop_widget.selection
         top = saved.top if not saved.top.is_empty else current.top
         bottom = saved.bottom if not saved.bottom.is_empty else current.bottom
-        self.crop_widget.set_selection(CropSelection(top=top, bottom=bottom))
+        self._editor_view.crop_widget.set_selection(
+            CropSelection(top=top, bottom=bottom),
+        )
 
     # ---- keyboard ----
 
     @override
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+    def keyPressEvent(self, event: QKeyEvent) -> None:
         """Handle keyboard shortcuts for playback, trimming, and help."""
         if event.key() == Qt.Key_K:  # ty: ignore[unresolved-attribute]
             self._toggle_play()
@@ -718,7 +679,7 @@ class MainWindow(QMainWindow):
         elif event.key() == Qt.Key_E:  # ty: ignore[unresolved-attribute]
             self._set_trim_end_to_playhead()
         elif event.key() == Qt.Key_M:  # ty: ignore[unresolved-attribute]
-            self.volume_control.toggle_mute()
+            self._editor_view.volume_control.toggle_mute()
         elif event.key() == Qt.Key_Question:  # ty: ignore[unresolved-attribute]
             self._show_keybindings_help()
         else:
@@ -729,9 +690,9 @@ class MainWindow(QMainWindow):
             return
         pos = self.player.position() / 1000.0
         updated = SetTrimStartUseCase().set_start(
-            SetTrimStartRequest(self.timeline.trim_range, pos),
+            SetTrimStartRequest(self._editor_view.timeline.trim_range, pos),
         )
-        self.timeline.apply_range(updated)
+        self._editor_view.timeline.apply_range(updated)
 
     def _set_trim_end_to_playhead(self) -> None:
         if not self.video_info:
@@ -739,12 +700,12 @@ class MainWindow(QMainWindow):
         pos = self.player.position() / 1000.0
         updated = SetTrimEndUseCase().set_end(
             SetTrimEndRequest(
-                self.timeline.trim_range,
+                self._editor_view.timeline.trim_range,
                 pos,
                 self.video_info.duration,
             ),
         )
-        self.timeline.apply_range(updated)
+        self._editor_view.timeline.apply_range(updated)
 
     def _show_keybindings_help(self) -> None:
         shortcuts = [
@@ -762,23 +723,21 @@ class MainWindow(QMainWindow):
     # ---- drag and drop ----
 
     @override
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Show the drop overlay when a file is dragged in."""
         if event.mimeData().hasUrls():
-            self._drop_overlay.setGeometry(
-                self.centralWidget().rect(),
-            )
+            self._drop_overlay.setGeometry(self._stack.rect())
             self._drop_overlay.show()
             self._drop_overlay.raise_()
             event.acceptProposedAction()
 
     @override
-    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:  # noqa: N802
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
         """Hide the drop overlay when the drag leaves."""
         self._drop_overlay.hide()
 
     @override
-    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802
+    def dropEvent(self, event: QDropEvent) -> None:
         """Open the first dropped video file."""
         self._drop_overlay.hide()
         for url in event.mimeData().urls():
@@ -806,6 +765,13 @@ def run(file_path: str | None = None) -> None:
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    load_fonts()
+
+    default_font = QFont(Typography.BODY)
+    default_font.setPixelSize(Typography.BODY_MD_SIZE)
+    default_font.setWeight(QFont.Weight(Typography.BODY_WEIGHT))
+    app.setFont(default_font)
+
     win = MainWindow(file_path)
     win.show()
     sys.exit(app.exec())

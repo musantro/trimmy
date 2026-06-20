@@ -14,7 +14,7 @@ from trimmy.rendering.domain.preset_repository import PresetRepository
 from trimmy.rendering.domain.services import SegmentPlanner
 from trimmy.shared.domain.use_case import UseCase
 
-ProgressListener = Callable[[int, int], None]
+ProgressListener = Callable[[int], None]
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,10 @@ class RenderSegmentsUseCase(UseCase[RenderJobRequest, RenderJobResult]):
         """Plan the segments, render each and return the aggregate result."""
         segments = self._planner.plan(request.spec.trim, request.max_duration)
         if len(segments) == 1:
-            outcome = self._render.render(request.spec)
+            outcome = self._render.render(
+                request.spec,
+                on_progress=request.on_progress,
+            )
             return RenderJobResult(outcomes=(outcome,), multipart=False)
 
         outcomes: list[RenderOutcome] = []
@@ -55,8 +58,21 @@ class RenderSegmentsUseCase(UseCase[RenderJobRequest, RenderJobResult]):
             if self._backend.cancelled:
                 outcomes.append(RenderOutcome.cancelled())
                 break
-            if request.on_progress is not None:
-                request.on_progress(segment.index, segment.total)
+
+            seg_cb: ProgressListener | None = None
+            listener = request.on_progress
+            if listener is not None:
+                base_pct = int((segment.index - 1) / segment.total * 100)
+                listener(base_pct)
+
+                def seg_cb(  # noqa: E301
+                    ffmpeg_pct: int,
+                    _base: int = base_pct,
+                    _total: int = segment.total,
+                    _cb: ProgressListener = listener,
+                ) -> None:
+                    _cb(int(_base + ffmpeg_pct / _total))
+
             seg_path = self._segment_path(request.spec.output_path, segment.index)
             seg_spec = replace(
                 request.spec,
@@ -64,7 +80,7 @@ class RenderSegmentsUseCase(UseCase[RenderJobRequest, RenderJobResult]):
                 output_path=seg_path,
             )
             outcome = replace(
-                self._render.render(seg_spec),
+                self._render.render(seg_spec, on_progress=seg_cb),
                 index=segment.index,
                 total=segment.total,
                 path=str(seg_path),

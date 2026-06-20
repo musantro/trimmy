@@ -207,8 +207,7 @@ def test_layers_depend_inward(source: Path) -> None:
         if _layer_of(module) in forbidden
     ]
     assert not violations, (
-        f"hexagonal dependency rule violated in {importer}:\n"
-        + "\n".join(violations)
+        f"hexagonal dependency rule violated in {importer}:\n" + "\n".join(violations)
     )
 
 
@@ -253,8 +252,8 @@ def test_respects_context_map(source: Path) -> None:
         for module, lineno in _trimmy_imports(source, importer)
         if (reason := _context_violation(importer, module)) is not None
     ]
-    assert not violations, (
-        f"context-map violation in {importer}:\n" + "\n".join(violations)
+    assert not violations, f"context-map violation in {importer}:\n" + "\n".join(
+        violations
     )
 
 

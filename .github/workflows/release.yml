@@ -47,6 +47,20 @@ jobs:
             fi
           fi
 
+      - name: Sync lockfile into bump commit
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          # cz bump updates pyproject.toml but not uv.lock, so the lockfile's
+          # project version drifts. Regenerate it and fold it into the bump
+          # commit (and move the tag) before anything is pushed, keeping the
+          # tagged tree self-consistent.
+          uv lock
+          if ! git diff --quiet uv.lock; then
+            git add uv.lock
+            git commit --amend --no-edit
+            git tag -f "v${{ steps.bump.outputs.version }}"
+          fi
+
       - name: Push bump commit and tag
         if: steps.bump.outputs.bumped == 'true'
         run: |
