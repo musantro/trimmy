@@ -44,10 +44,12 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSlider,
+    QStatusBar,
     QVBoxLayout,
     QWidget,
 )
 
+from trimmy import __version__
 from trimmy.app.preferences.application.load_preferences_use_case import (
     LoadPreferencesUseCase,
 )
@@ -192,6 +194,9 @@ QMenu {
 }
 QMenu::item { padding: 8px 20px; font-size: 13px; }
 QMenu::item:selected { background: #1a4a80; }
+QStatusBar { background: #16213e; }
+QStatusBar::item { border: none; }
+QLabel#version { color: #888; font-size: 11px; padding: 2px 10px; }
 """
 
 
@@ -445,6 +450,13 @@ class MainWindow(QMainWindow):
         # drop overlay (parented to central so it covers everything)
         self._drop_overlay = DropOverlay(central)
         self._drop_overlay.hide()
+
+        # footer status bar with the app version floated to the right
+        status_bar = QStatusBar()
+        self.setStatusBar(status_bar)
+        self.version_label = QLabel(f"v{__version__}")
+        self.version_label.setObjectName("version")
+        status_bar.addPermanentWidget(self.version_label)
 
     @staticmethod
     def _section_label(text: str) -> QLabel:
