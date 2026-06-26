@@ -1,0 +1,53 @@
+name: Test Redistribute
+
+# Builds the sdist and wheel exactly as they'd be published to PyPI, then
+# installs the wheel into a clean environment and imports the package. Catches
+# packaging regressions (missing modules, broken metadata, version mismatch)
+# before `release.yml` ever runs `uv publish`.
+
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: test-redistribute-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-redistribute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          python-version-file: ".python-version"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Install the built wheel into a clean environment
+        run: |
+          uv venv /tmp/redistribute
+          uv pip install --python /tmp/redistribute dist/*.whl
+
+      - name: Import the package and check version metadata
+        run: |
+          /tmp/redistribute/bin/python - <<'PY'
+          import trimmy
+          import tomllib
+          from pathlib import Path
+
+          declared = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          installed = trimmy.__version__
+          assert installed == declared, f"version mismatch: wheel {installed!r} != pyproject {declared!r}"
+          print(f"OK: trimmy {installed} imports and version metadata resolves")
+          PY
+
+      - name: Check the console script is installed
+        run: test -x /tmp/redistribute/bin/trimmy
