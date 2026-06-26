@@ -11,19 +11,9 @@ concurrency:
 permissions: {}
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
-      - run: uv sync
-      - name: Ruff
-        run: uv run ruff check .
-      - name: ty
-        run: uv run ty check
-
+  # Linting, formatting and type checks live in pre-commit.yml (prek), which
+  # is a superset of what a separate lint job would run here. This workflow
+  # owns only the test matrix.
   test:
     runs-on: ubuntu-latest
     strategy:
