@@ -9,9 +9,10 @@ if sys.version_info >= (3, 12):
 else:
     from typing_extensions import override
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
+    QEnterEvent,
     QFont,
     QImage,
     QMouseEvent,
@@ -350,8 +351,10 @@ class PreviewWidget(QWidget):
         self.selection = CropSelection(top=CropRect(), bottom=CropRect())
         self.split_ratio: float = 0.5
         self._dragging: bool = False
+        self._hover: bool = False
         self.dimmed: bool = False
         self.interactive: bool = True
+        self.setMouseTracking(True)
 
     def _preview_rect(self) -> QRectF:
         """Return the centered 9:16 rect that fits inside the widget."""
@@ -409,7 +412,7 @@ class PreviewWidget(QWidget):
                 QRectF(bc.x, bc.y, bc.w, bc.h),
             )
 
-        if self.interactive:
+        if self.interactive and (self._hover or self._dragging):
             p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
             p.setBrush(QColor(Colors.PRIMARY))
             p.drawRect(QRectF(r.x(), r.y() + top_h - 3, r.width(), 6))
@@ -423,6 +426,18 @@ class PreviewWidget(QWidget):
             p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
             p.setBrush(QColor(0, 0, 0, 160))
             p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 8, 8)
+
+    @override
+    def enterEvent(self, event: QEnterEvent) -> None:
+        """Reveal the split bar while the cursor is over the preview."""
+        self._hover = True
+        self.update()
+
+    @override
+    def leaveEvent(self, event: QEvent) -> None:
+        """Hide the split bar once the cursor leaves the preview."""
+        self._hover = False
+        self.update()
 
     @override
     def mousePressEvent(self, event: QMouseEvent) -> None:
