@@ -1,3 +1,9 @@
+## v0.8.4 (2026-06-27)
+
+### Fix
+
+- **hooks**: pre-fetch hook environments and surface failures at session start
+
 ## v0.8.3 (2026-06-20)
 
 ### Fix
