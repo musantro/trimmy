@@ -43,10 +43,29 @@ done
 
 if [ "$need_install" -eq 1 ]; then
   echo "Installing prek git hooks..."
-  uv run prek install --hook-type pre-commit --hook-type commit-msg
 else
   echo "Git hooks already installed; ensuring they are up to date..."
-  uv run prek install --hook-type pre-commit --hook-type commit-msg
 fi
+uv run prek install --hook-type pre-commit --hook-type commit-msg
 
-echo "Pre-commit hooks verified and installed."
+# `prek install` only writes the .git/hooks shims; the hook repos themselves are
+# cloned lazily on first run. Pre-fetch and build the hook environments now so
+# that network/egress problems surface at session start instead of silently
+# breaking the developer's first commit.
+echo "Preparing hook environments (prek install-hooks)..."
+if uv run prek install-hooks; then
+  echo "Pre-commit hooks verified, installed, and ready to run."
+else
+  status=$?
+  {
+    echo ""
+    echo "WARNING: pre-commit hook environments could not be prepared (exit ${status})."
+    echo "The git hook shims are installed, but the hook repos failed to download."
+    echo "In Claude Code on the web this is usually the egress network policy"
+    echo "blocking github.com (HTTP 403 from the agent proxy). Commits will fail"
+    echo "the hooks until the environment's network policy allows github.com, or"
+    echo "the config is switched to local tooling."
+    echo "See \"${PREK_HOME:-$HOME/.cache/prek}/prek.log\" for the exact errors."
+  } >&2
+  # Don't abort the session over linting tooling; just make the failure loud.
+fi
