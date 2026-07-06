@@ -1,3 +1,9 @@
+## v0.9.0 (2026-07-06)
+
+### Feat
+
+- add render screen playground
+
 ## v0.8.4 (2026-06-27)
 
 ### Fix
