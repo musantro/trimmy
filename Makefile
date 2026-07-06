@@ -1,6 +1,12 @@
 run:
 	uv run trimmy
 
+render-playground:
+	uv run trimmy-render-playground
+
+render-snapshots:
+	uv run trimmy-render-playground --snapshot-dir .codex/render-playground
+
 install:
 	uv sync --group dev
 	uv run prek install --hook-type commit-msg

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -47,7 +48,7 @@ class RenderView(QWidget):
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 0, 0, 0)
-        scroll_layout.setAlignment(Qt.AlignHCenter | Qt.AlignTop)  # ty: ignore[unresolved-attribute]
+        scroll_layout.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)  # ty: ignore[unresolved-attribute]
         scroll.setWidget(scroll_content)
 
         # Root layout for this widget
@@ -57,7 +58,12 @@ class RenderView(QWidget):
 
         # Content card
         card = QWidget()
+        card.setMinimumWidth(820)
         card.setMaximumWidth(1000)
+        card.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
         card.setStyleSheet(
             f"QWidget#render-card {{"
             f" background: {Colors.SURFACE_CONTAINER_LOW};"
@@ -68,17 +74,27 @@ class RenderView(QWidget):
         card.setObjectName("render-card")
 
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(Spacing.LG, Spacing.LG, Spacing.LG, Spacing.LG)
+        card_layout.setContentsMargins(
+            Spacing.LG,
+            Spacing.MD,
+            Spacing.LG,
+            Spacing.MD,
+        )
         card_layout.setSpacing(0)
 
         # Two-column layout inside card
         columns = QHBoxLayout()
-        columns.setSpacing(Spacing.XL)
+        columns.setSpacing(Spacing.LG)
         card_layout.addLayout(columns)
 
         # ── LEFT COLUMN ──────────────────────────────────────
-        left = QVBoxLayout()
-        left.setSpacing(Spacing.XL)
+        left_wrapper = QWidget()
+        left_wrapper.setMinimumWidth(360)
+        left_wrapper.setStyleSheet("background: transparent;")
+
+        left = QVBoxLayout(left_wrapper)
+        left.setContentsMargins(0, 0, 0, 0)
+        left.setSpacing(Spacing.LG)
 
         # Global Progress section
         global_section = QVBoxLayout()
@@ -86,14 +102,14 @@ class RenderView(QWidget):
 
         # Header row
         header_row = QHBoxLayout()
-        header_row.setSpacing(0)
+        header_row.setSpacing(Spacing.MD)
 
         global_label = SectionLabel("GLOBAL PROGRESS")
         header_row.addWidget(global_label)
         header_row.addStretch()
 
         pct_font = QFont(Typography.DISPLAY)
-        pct_font.setPixelSize(Typography.HEADLINE_SIZE)
+        pct_font.setPixelSize(28)
         pct_font.setWeight(QFont.Weight(Typography.HEADLINE_WEIGHT))
 
         self.global_pct_label = QLabel("0%")
@@ -125,19 +141,20 @@ class RenderView(QWidget):
             ),
         )
         estimate_icon.setStyleSheet("background: transparent;")
+        estimate_row.addStretch()
         estimate_row.addWidget(estimate_icon)
 
         estimate_font = QFont(Typography.MONO)
         estimate_font.setPixelSize(Typography.LABEL_SM_SIZE)
         estimate_font.setWeight(QFont.Weight(Typography.LABEL_SM_WEIGHT))
 
-        self.estimate_label = QLabel("Estimated: --:-- remaining")
+        self.estimate_label = QLabel("--:-- remaining")
         self.estimate_label.setFont(estimate_font)
         self.estimate_label.setStyleSheet(
             f"color: {Colors.ON_SURFACE_VARIANT}; background: transparent;",
         )
+        self.estimate_label.setAlignment(Qt.AlignRight)  # ty: ignore[unresolved-attribute]
         estimate_row.addWidget(self.estimate_label)
-        estimate_row.addStretch()
 
         global_section.addLayout(estimate_row)
 
@@ -156,12 +173,13 @@ class RenderView(QWidget):
             ActionButtonVariant.DANGER,
             icon_name="cancel",
         )
+        self.cancel_btn.setMinimumWidth(220)
         self.cancel_btn.clicked.connect(self._on_button_clicked)
         left.addWidget(self.cancel_btn)
 
         self._finished = False
 
-        columns.addLayout(left, 1)
+        columns.addWidget(left_wrapper, 1)
 
         # ── RIGHT COLUMN ─────────────────────────────────────
         right = QVBoxLayout()
@@ -188,7 +206,7 @@ class RenderView(QWidget):
         percent = max(0, min(100, percent))
         self.global_progress.set_value(percent)
         self.global_pct_label.setText(f"{percent}%")
-        self.estimate_label.setText(estimate_text)
+        self.estimate_label.setText(self._remaining_time_text(estimate_text))
 
     def set_platform_info(self, name: str, percent: int) -> None:
         """Update or create a platform progress item by name."""
@@ -223,12 +241,21 @@ class RenderView(QWidget):
 
         self.global_progress.set_value(0)
         self.global_pct_label.setText("0%")
-        self.estimate_label.setText("Estimated: --:-- remaining")
+        self.estimate_label.setText("--:-- remaining")
 
         for item in self._platform_items.values():
             self._platform_layout.removeWidget(item)
+            item.setParent(None)
             item.deleteLater()
         self._platform_items.clear()
 
         self.preview.frame = None
         self.preview.update()
+
+    @staticmethod
+    def _remaining_time_text(text: str) -> str:
+        text = text.strip()
+        for prefix in ("Rendering...", "Rendering…"):
+            if text.startswith(prefix):
+                text = text.removeprefix(prefix).strip()
+        return text
