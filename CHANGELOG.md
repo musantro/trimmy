@@ -1,3 +1,9 @@
+## v0.12.0 (2026-07-06)
+
+### Feat
+
+- show audio channel levels in editor
+
 ## v0.11.1 (2026-07-06)
 
 ### Fix
