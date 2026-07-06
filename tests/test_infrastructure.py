@@ -162,7 +162,12 @@ def test_ffprobe_reads_metadata():
                     "height": 1080,
                     "r_frame_rate": "60/1",
                 },
-                {"codec_type": "audio"},
+                {
+                    "codec_type": "audio",
+                    "channels": 2,
+                    "sample_rate": "48000",
+                    "codec_name": "aac",
+                },
             ],
         },
     )
@@ -173,3 +178,6 @@ def test_ffprobe_reads_metadata():
     assert metadata.duration == 120.5
     assert metadata.fps == 60.0
     assert metadata.width == 1920
+    assert metadata.audio_channels == 2
+    assert metadata.audio_sample_rate == 48000
+    assert metadata.audio_codec == "aac"

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import array
+import math
 import sys
 
 if sys.version_info >= (3, 12):
@@ -20,6 +22,7 @@ from PySide6.QtGui import (
     QPaintEvent,
     QPen,
 )
+from PySide6.QtMultimedia import QAudioBuffer, QAudioFormat
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from trimmy.app.theme import Colors, Typography
@@ -637,3 +640,200 @@ class TimelineWidget(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         """End the trim-handle drag."""
         self._dragging = None
+
+
+class AudioLevelMeter(QWidget):
+    """Multi-channel audio meter showing live RMS levels in dBFS."""
+
+    _MIN_DB = -60.0
+    _MAX_DB = 0.0
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._channels = 0
+        self._sample_rate = 0
+        self._codec = ""
+        self._levels: list[float] = []
+        self.setMinimumWidth(240)
+        self.setFixedHeight(88)
+
+    def configure(
+        self,
+        *,
+        channels: int,
+        sample_rate: int = 0,
+        codec: str = "",
+    ) -> None:
+        """Configure the visible channels and static audio metadata."""
+        self._channels = max(0, channels)
+        self._sample_rate = max(0, sample_rate)
+        self._codec = codec.upper()
+        self._levels = [self._MIN_DB] * self._channels
+        self.setFixedHeight(56 + max(1, self._channels) * 22)
+        self.update()
+
+    def reset_levels(self) -> None:
+        """Clear the meter to silence."""
+        self._levels = [self._MIN_DB] * self._channels
+        self.update()
+
+    def set_levels(self, levels: list[float]) -> None:
+        """Set current channel levels in dBFS."""
+        if self._channels == 0:
+            return
+        trimmed = levels[: self._channels]
+        padded = trimmed + [self._MIN_DB] * (self._channels - len(trimmed))
+        self._levels = [max(self._MIN_DB, min(self._MAX_DB, level)) for level in padded]
+        self.update()
+
+    def set_buffer(self, buffer: QAudioBuffer) -> None:
+        """Update live levels from a Qt audio buffer."""
+        if not buffer.isValid():
+            self.reset_levels()
+            return
+        levels = self._levels_from_buffer(buffer)
+        if levels:
+            self.set_levels(levels)
+
+    def _levels_from_buffer(self, buffer: QAudioBuffer) -> list[float]:
+        fmt = buffer.format()
+        channels = fmt.channelCount()
+        if channels <= 0:
+            return []
+
+        raw = self._buffer_bytes(buffer)
+        sample_width = fmt.bytesPerSample()
+        sample_count = len(raw) // sample_width if sample_width else 0
+        frame_count = min(buffer.frameCount(), sample_count // channels)
+        if frame_count <= 0:
+            return []
+
+        values = self._normalized_samples(raw, fmt)
+        if not values:
+            return []
+
+        sums = [0.0] * channels
+        usable = frame_count * channels
+        for idx, sample in enumerate(values[:usable]):
+            sums[idx % channels] += sample * sample
+
+        return [self._rms_to_db(math.sqrt(total / frame_count)) for total in sums]
+
+    @staticmethod
+    def _buffer_bytes(buffer: QAudioBuffer) -> bytes:
+        try:
+            return bytes(buffer.constData())
+        except TypeError:
+            data = buffer.constData()
+            if isinstance(data, memoryview):
+                return data.tobytes()
+            if isinstance(data, bytearray):
+                return bytes(data)
+            return b""
+
+    @staticmethod
+    def _normalized_samples(
+        raw: bytes,
+        fmt: QAudioFormat,
+    ) -> list[float]:
+        sample_format = fmt.sampleFormat()
+        if sample_format == QAudioFormat.SampleFormat.UInt8:
+            return [(value - 128) / 128.0 for value in raw]
+
+        if sample_format == QAudioFormat.SampleFormat.Int16:
+            samples = array.array("h")
+            samples.frombytes(raw[: len(raw) - (len(raw) % 2)])
+            return [max(-1.0, sample / 32768.0) for sample in samples]
+
+        if sample_format == QAudioFormat.SampleFormat.Int32:
+            samples = array.array("i")
+            samples.frombytes(raw[: len(raw) - (len(raw) % 4)])
+            return [max(-1.0, sample / 2147483648.0) for sample in samples]
+
+        if sample_format == QAudioFormat.SampleFormat.Float:
+            samples = array.array("f")
+            samples.frombytes(raw[: len(raw) - (len(raw) % 4)])
+            return [max(-1.0, min(1.0, sample)) for sample in samples]
+
+        return []
+
+    @classmethod
+    def _rms_to_db(cls, rms: float) -> float:
+        if rms <= 0.000001:
+            return cls._MIN_DB
+        return 20.0 * math.log10(rms)
+
+    @override
+    def paintEvent(self, event: QPaintEvent) -> None:
+        """Draw channel labels, dB readouts, and level bars."""
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)  # ty: ignore[unresolved-attribute]
+        p.fillRect(self.rect(), QColor(Colors.SURFACE_CONTAINER_LOW))
+
+        title_font = QFont(Typography.MONO)
+        title_font.setPixelSize(Typography.LABEL_SM_SIZE)
+        title_font.setWeight(QFont.Weight(Typography.LABEL_SM_WEIGHT))
+        p.setFont(title_font)
+        p.setPen(QColor(Colors.ON_SURFACE_VARIANT))
+
+        meta = "NO AUDIO"
+        if self._channels:
+            rate = f"{self._sample_rate // 1000} KHZ" if self._sample_rate else ""
+            parts = [f"{self._channels} CH", rate, self._codec]
+            meta = " · ".join(part for part in parts if part)
+        p.drawText(
+            QRectF(12, 8, self.width() - 24, 18),
+            Qt.AlignLeft,  # ty: ignore[unresolved-attribute]
+            f"AUDIO CHANNELS  {meta}",
+        )
+
+        if self._channels == 0:
+            p.setPen(QColor(Colors.OUTLINE))
+            p.drawText(
+                QRectF(12, 32, self.width() - 24, 18),
+                Qt.AlignLeft,  # ty: ignore[unresolved-attribute]
+                "No audio streams detected",
+            )
+            return
+
+        label_w = 44
+        value_w = 62
+        bar_left = 12 + label_w
+        bar_right = self.width() - 12 - value_w
+        bar_w = max(24, bar_right - bar_left)
+        row_top = 34
+        row_h = 22
+
+        row_font = QFont(Typography.MONO)
+        row_font.setPixelSize(10)
+        p.setFont(row_font)
+
+        for index in range(self._channels):
+            y = row_top + index * row_h
+            level = self._levels[index] if index < len(self._levels) else self._MIN_DB
+            pct = (level - self._MIN_DB) / (self._MAX_DB - self._MIN_DB)
+
+            p.setPen(QColor(Colors.ON_SURFACE_VARIANT))
+            p.drawText(
+                QRectF(12, y, label_w - 8, 14),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                f"CH {index + 1}",
+            )
+
+            bar = QRectF(bar_left, y + 4, bar_w, 8)
+            p.setPen(Qt.NoPen)  # ty: ignore[unresolved-attribute]
+            p.setBrush(QColor(Colors.SURFACE_CONTAINER_HIGHEST))
+            p.drawRoundedRect(bar, 4, 4)
+
+            fill_w = max(2.0, bar.width() * pct) if level > self._MIN_DB else 0.0
+            if fill_w > 0:
+                color = Colors.ERROR if level > -6 else Colors.PRIMARY_CONTAINER
+                p.setBrush(QColor(color))
+                p.drawRoundedRect(QRectF(bar.x(), bar.y(), fill_w, bar.height()), 4, 4)
+
+            p.setPen(QColor(Colors.ON_SURFACE))
+            p.drawText(
+                QRectF(bar_right + 8, y, value_w - 8, 14),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                f"{level:5.1f} dB",
+            )

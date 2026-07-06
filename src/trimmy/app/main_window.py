@@ -23,6 +23,8 @@ from PySide6.QtGui import (
     QKeyEvent,
 )
 from PySide6.QtMultimedia import (
+    QAudioBuffer,
+    QAudioBufferOutput,
     QAudioOutput,
     QMediaPlayer,
     QVideoFrame,
@@ -198,6 +200,9 @@ class MainWindow(QMainWindow):
         self._volume = self._prefs.volume
         self.audio.setVolume(self._volume / 100.0)
         self.player.setAudioOutput(self.audio)
+        self.audio_buffer = QAudioBufferOutput()
+        self.player.setAudioBufferOutput(self.audio_buffer)
+        self.audio_buffer.audioBufferReceived.connect(self._on_audio_buffer)
         self.sink = QVideoSink()
         self.player.setVideoSink(self.sink)
         self.sink.videoFrameChanged.connect(self._on_frame)
@@ -373,6 +378,11 @@ class MainWindow(QMainWindow):
         self._editor_view.crop_widget.init_crops()
         self._restore_crops()
         self._editor_view.timeline.set_duration(info.duration)
+        self._editor_view.audio_meter.configure(
+            channels=info.audio_channels,
+            sample_rate=info.audio_sample_rate,
+            codec=info.audio_codec,
+        )
         self._update_crop_aspects()
 
         self._waiting_first_frame = True
@@ -399,6 +409,7 @@ class MainWindow(QMainWindow):
         if self._waiting_first_frame:
             self._waiting_first_frame = False
             self.player.pause()
+            self._editor_view.audio_meter.reset_levels()
 
     def _on_position(self, ms: int) -> None:
         sec = ms / 1000.0
@@ -413,6 +424,10 @@ class MainWindow(QMainWindow):
                 int(self._editor_view.timeline.trim_start * 1000),
             )
             self._editor_view.playback.set_playing(playing=False)
+            self._editor_view.audio_meter.reset_levels()
+
+    def _on_audio_buffer(self, buffer: QAudioBuffer) -> None:
+        self._editor_view.audio_meter.set_buffer(buffer)
 
     # ---- playback ----
 
@@ -423,6 +438,7 @@ class MainWindow(QMainWindow):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
             self._editor_view.playback.set_playing(playing=False)
+            self._editor_view.audio_meter.reset_levels()
         else:
             pos_sec = self.player.position() / 1000.0
             if (
