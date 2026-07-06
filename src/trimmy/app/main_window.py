@@ -403,7 +403,11 @@ class MainWindow(QMainWindow):
     def _on_position(self, ms: int) -> None:
         sec = ms / 1000.0
         self._editor_view.timeline.set_position(sec)
-        if self.video_info and sec >= self._editor_view.timeline.trim_end:
+        if (
+            self.video_info
+            and self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+            and sec >= self._editor_view.timeline.trim_end
+        ):
             self.player.pause()
             self.player.setPosition(
                 int(self._editor_view.timeline.trim_start * 1000),
