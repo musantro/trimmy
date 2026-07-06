@@ -98,6 +98,9 @@ class VideoMetadata:
     width: int
     height: int
     fps: float
+    audio_channels: int = 0
+    audio_sample_rate: int = 0
+    audio_codec: str = ""
 
 
 @dataclass(frozen=True)

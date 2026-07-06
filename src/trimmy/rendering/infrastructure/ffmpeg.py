@@ -198,6 +198,10 @@ class FFprobeVideoProber(VideoProber):
         info = json.loads(proc.stdout)
         duration = float(info["format"]["duration"])
         vs = next(s for s in info["streams"] if s["codec_type"] == "video")
+        audio_stream = next(
+            (s for s in info["streams"] if s["codec_type"] == "audio"),
+            {},
+        )
         r_fps = vs.get("r_frame_rate", "30/1")
         num, den = (int(x) for x in r_fps.split("/"))
         fps = round(num / den, 3) if den else 30.0
@@ -206,4 +210,7 @@ class FFprobeVideoProber(VideoProber):
             width=int(vs["width"]),
             height=int(vs["height"]),
             fps=fps,
+            audio_channels=int(audio_stream.get("channels", 0) or 0),
+            audio_sample_rate=int(audio_stream.get("sample_rate", 0) or 0),
+            audio_codec=audio_stream.get("codec_name", ""),
         )

@@ -22,7 +22,12 @@ from trimmy.app.components import (
     VolumeControl,
 )
 from trimmy.app.theme import Colors, Radii, Spacing, Typography
-from trimmy.app.widgets import CropWidget, PreviewWidget, TimelineWidget
+from trimmy.app.widgets import (
+    AudioLevelMeter,
+    CropWidget,
+    PreviewWidget,
+    TimelineWidget,
+)
 
 
 class EditorView(QWidget):
@@ -86,6 +91,11 @@ class EditorView(QWidget):
 
         left_layout.addSpacing(Spacing.SECTION_GAP)
         left_layout.addWidget(timeline_container)
+
+        self.audio_meter = AudioLevelMeter()
+        self.audio_meter.configure(channels=0)
+        left_layout.addSpacing(Spacing.SM)
+        left_layout.addWidget(self.audio_meter)
 
         # Playback centered, volume right-aligned via stacked layers
         controls_container = QWidget()
