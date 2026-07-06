@@ -156,6 +156,29 @@ class RenderSpec:
 
 
 @dataclass(frozen=True)
+class RenderTarget:
+    """One selected platform/format/quality output target."""
+
+    platform: str
+    format_key: str
+    quality: str
+
+    @property
+    def key(self) -> str:
+        """Return a stable key for progress and filenames."""
+        return f"{self.platform}_{self.format_key}_{self.quality}"
+
+
+@dataclass(frozen=True)
+class RenderQueueItem:
+    """One queued render output with its split policy."""
+
+    target: RenderTarget
+    spec: RenderSpec
+    max_duration: int | None
+
+
+@dataclass(frozen=True)
 class RenderOutcome:
     """The result of rendering a single clip or segment."""
 
@@ -267,3 +290,39 @@ class RenderJobResult(AggregateRoot):
             sum(o.size_mb for o in self._outcomes if o.size_mb is not None),
             2,
         )
+
+
+@dataclass(frozen=True)
+class RenderQueueEntryResult:
+    """The render result for one queued target."""
+
+    target: RenderTarget
+    result: RenderJobResult
+
+
+class RenderQueueResult(AggregateRoot):
+    """Aggregate result for a sequential multi-target render queue."""
+
+    def __init__(self, entries: tuple[RenderQueueEntryResult, ...]) -> None:
+        super().__init__()
+        self._entries = entries
+
+    @property
+    def entries(self) -> tuple[RenderQueueEntryResult, ...]:
+        """Return queued target results in render order."""
+        return self._entries
+
+    @property
+    def parts(self) -> int:
+        """Return the number of queued outputs that produced a result."""
+        return len(self._entries)
+
+    @property
+    def is_cancelled(self) -> bool:
+        """Return whether any queued render was cancelled."""
+        return any(entry.result.is_cancelled for entry in self._entries)
+
+    @property
+    def failures(self) -> tuple[RenderQueueEntryResult, ...]:
+        """Return queued outputs that have at least one non-cancel failure."""
+        return tuple(entry for entry in self._entries if entry.result.failures)

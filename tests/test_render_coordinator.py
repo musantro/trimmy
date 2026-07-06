@@ -13,10 +13,13 @@ from trimmy.rendering.domain.gateways import RenderingBackend
 from trimmy.rendering.domain.messages import (
     RenderCompleted,
     RenderProgressed,
+    RenderQueueCompleted,
+    RenderQueueProgressed,
     StartRendering,
+    StartRenderQueue,
     StopRendering,
 )
-from trimmy.rendering.domain.models import ProcessResult
+from trimmy.rendering.domain.models import ProcessResult, RenderQueueItem, RenderTarget
 from trimmy.rendering.infrastructure.in_memory_preset_repository import (
     InMemoryPresetRepository,
 )
@@ -101,3 +104,33 @@ def test_stop_rendering_cancels_the_backend():
     bus.publish(StopRendering())
 
     assert backend.cancel_calls == 1
+
+
+def test_start_render_queue_publishes_progress_and_completed():
+    bus = InMemoryEventBus()
+    backend = _Backend([ProcessResult(0, ""), ProcessResult(0, "")])
+    _coordinator(bus, backend)
+
+    progress: list[RenderQueueProgressed] = []
+    completed: list[RenderQueueCompleted] = []
+    bus.subscribe(RenderQueueProgressed, progress.append)
+    bus.subscribe(RenderQueueCompleted, completed.append)
+
+    first = RenderTarget("instagram", "reels", "max")
+    second = RenderTarget("twitter", "post", "max")
+    bus.publish(
+        StartRenderQueue(
+            (
+                RenderQueueItem(first, make_spec(platform="instagram"), None),
+                RenderQueueItem(second, make_spec(platform="twitter"), None),
+            ),
+        ),
+    )
+
+    assert [event.target for event in progress if event.target_pct == 0] == [
+        first,
+        second,
+    ]
+    assert progress[-1].global_pct == 100
+    assert len(completed) == 1
+    assert completed[0].result.parts == 2

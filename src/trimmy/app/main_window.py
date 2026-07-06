@@ -52,7 +52,7 @@ from trimmy.app.preferences.application.load_preferences_use_case import (
 from trimmy.app.preferences.application.save_preferences_use_case import (
     SavePreferencesUseCase,
 )
-from trimmy.app.preferences.domain.models import Preferences
+from trimmy.app.preferences.domain.models import Preferences, TargetPreference
 from trimmy.app.preferences.infrastructure.json_preferences_repository import (
     JsonPreferencesRepository,
 )
@@ -81,13 +81,19 @@ from trimmy.rendering.application.render_segments_use_case import (
 from trimmy.rendering.domain.messages import (
     RenderCompleted,
     RenderProgressed,
+    RenderQueueCompleted,
+    RenderQueueProgressed,
     StartRendering,
+    StartRenderQueue,
     StopRendering,
 )
 from trimmy.rendering.domain.models import (
     PlatformFormat,
     RenderJobResult,
+    RenderQueueItem,
+    RenderQueueResult,
     RenderSpec,
+    RenderTarget,
     VideoMetadata,
 )
 from trimmy.rendering.domain.preset_repository import PresetRepository
@@ -117,7 +123,7 @@ class RenderWorker(QThread):
         self,
         bus: EventBus,
         presets: PresetRepository,
-        command: StartRendering,
+        command: StartRendering | StartRenderQueue,
     ) -> None:
         super().__init__()
         self._bus = bus
@@ -136,6 +142,8 @@ class RenderWorker(QThread):
         RenderCoordinator(local, use_case, self._backend)
         local.subscribe(RenderProgressed, self._bus.publish)
         local.subscribe(RenderCompleted, self._bus.publish)
+        local.subscribe(RenderQueueProgressed, self._bus.publish)
+        local.subscribe(RenderQueueCompleted, self._bus.publish)
         local.publish(self._command)
 
 
@@ -164,14 +172,21 @@ class MainWindow(QMainWindow):
         self.selected_platform: str = self._prefs.selected_platform
         self.selected_format: str = self._prefs.selected_format
         self.selected_quality: str = self._prefs.selected_quality
+        self.selected_targets: tuple[tuple[str, str], ...] = tuple(
+            (target.platform, target.format_key)
+            for target in self._prefs.selected_targets
+        ) or ((self.selected_platform, self.selected_format),)
         self.split_ratio: float = self._prefs.split_ratio
         self._waiting_first_frame: bool = False
 
         self._bus = PySideEventBus(self)
         self._bus.subscribe(StartRendering, self._on_start_rendering)
+        self._bus.subscribe(StartRenderQueue, self._on_start_rendering)
         self._bus.subscribe(StopRendering, self._on_stop_rendering)
         self._bus.subscribe(RenderProgressed, self._on_render_progressed)
         self._bus.subscribe(RenderCompleted, self._on_render_completed)
+        self._bus.subscribe(RenderQueueProgressed, self._on_render_queue_progressed)
+        self._bus.subscribe(RenderQueueCompleted, self._on_render_queue_completed)
         self._render_worker: RenderWorker | None = None
         self._render_out_path: str | None = None
         self._preview_player: QMediaPlayer | None = None
@@ -197,7 +212,10 @@ class MainWindow(QMainWindow):
                 self.selected_platform,
                 self.selected_format,
             )
+        self._editor_view.platform_selector.set_targets(self.selected_targets)
         self._editor_view.platform_selector.blockSignals(False)  # noqa: FBT003
+        self.selected_targets = self._editor_view.platform_selector.selected_targets()
+        self._editor_view.render_btn.setEnabled(bool(self.selected_targets))
 
         if file_path:
             self.open_file(file_path)
@@ -264,6 +282,9 @@ class MainWindow(QMainWindow):
         )
         self._editor_view.platform_selector.format_changed.connect(
             self._on_format_changed,
+        )
+        self._editor_view.platform_selector.selection_changed.connect(
+            self._on_target_selection_changed,
         )
         self._stack.addWidget(self._editor_view)
 
@@ -459,7 +480,13 @@ class MainWindow(QMainWindow):
         self._update_crop_aspects()
 
     def _on_format_changed(self, platform: str, format_key: str) -> None:
+        self.selected_platform = platform
         self.selected_format = format_key
+        self._update_crop_aspects()
+
+    def _on_target_selection_changed(self) -> None:
+        self.selected_targets = self._editor_view.platform_selector.selected_targets()
+        self._editor_view.render_btn.setEnabled(bool(self.selected_targets))
 
     def _get_format(self, platform: str, format_key: str) -> PlatformFormat:
         return self._format_selector.select(
@@ -473,42 +500,66 @@ class MainWindow(QMainWindow):
         if not self.video_info or self._source_path is None:
             return
         src = self._source_path
-        fmt = self._get_format(self.selected_platform, self.selected_format)
-        max_duration = fmt.max_duration
-
-        default_name = (
-            f"{src.stem}_{self.selected_platform}_{self.selected_quality}.mp4"
-        )
-        out_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Rendered Video",
-            str(src.parent / default_name),
-            "MP4 Files (*.mp4)",
-        )
-        if not out_path:
+        targets = self._editor_view.platform_selector.selected_targets()
+        if not targets:
             return
+
+        if len(targets) == 1:
+            platform, format_key = targets[0]
+            default_name = (
+                f"{src.stem}_{platform}_{format_key}_{self.selected_quality}.mp4"
+            )
+            out_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Rendered Video",
+                str(src.parent / default_name),
+                "MP4 Files (*.mp4)",
+            )
+            if not out_path:
+                return
+            output_paths = {targets[0]: Path(out_path)}
+        else:
+            out_dir = QFileDialog.getExistingDirectory(
+                self,
+                "Choose Render Output Folder",
+                str(src.parent),
+            )
+            if not out_dir:
+                return
+            output_root = Path(out_dir)
+            output_paths = {
+                target: output_root
+                / f"{src.stem}_{target[0]}_{target[1]}_{self.selected_quality}.mp4"
+                for target in targets
+            }
 
         self._editor_view.render_btn.setEnabled(False)
         self._editor_view.stop_btn.setVisible(True)
 
-        spec = RenderSpec(
-            source_path=src,
-            output_path=Path(out_path),
-            trim=self._editor_view.timeline.trim_range,
-            crops=self._editor_view.crop_widget.selection,
-            split_ratio=self.split_ratio,
-            platform=self.selected_platform,
-            quality=self.selected_quality,
-            source_fps=self.video_info.fps,
-        )
-        self._render_out_path = out_path
-        self._bus.publish(StartRendering(spec, max_duration))
+        items: list[RenderQueueItem] = []
+        for platform, format_key in targets:
+            fmt = self._get_format(platform, format_key)
+            target = RenderTarget(platform, format_key, self.selected_quality)
+            spec = RenderSpec(
+                source_path=src,
+                output_path=output_paths[(platform, format_key)],
+                trim=self._editor_view.timeline.trim_range,
+                crops=self._editor_view.crop_widget.selection,
+                split_ratio=self.split_ratio,
+                platform=platform,
+                quality=self.selected_quality,
+                source_fps=self.video_info.fps,
+            )
+            items.append(RenderQueueItem(target, spec, fmt.max_duration))
+            self._render_view.set_platform_info(self._target_label(target), 0)
 
-        self._render_view.set_platform_info(self.selected_platform, 0)
+        self._render_out_path = str(next(iter(output_paths.values())))
+        self._bus.publish(StartRenderQueue(tuple(items)))
+
         self._switch_to_view(_VIEW_RENDER)
         self._start_render_preview()
 
-    def _on_start_rendering(self, command: StartRendering) -> None:
+    def _on_start_rendering(self, command: StartRendering | StartRenderQueue) -> None:
         """Launch the render worker for *command* off the GUI thread."""
         self._render_worker = RenderWorker(self._bus, self._presets, command)
         self._render_worker.start()
@@ -521,6 +572,13 @@ class MainWindow(QMainWindow):
     def _on_render_progressed(self, event: RenderProgressed) -> None:
         self._render_view.set_global_progress(event.pct, "--:-- remaining")
         self._render_view.set_platform_info(self.selected_platform, event.pct)
+
+    def _on_render_queue_progressed(self, event: RenderQueueProgressed) -> None:
+        self._render_view.set_global_progress(event.global_pct, "--:-- remaining")
+        self._render_view.set_platform_info(
+            self._target_label(event.target),
+            event.target_pct,
+        )
 
     def _on_render_completed(self, event: RenderCompleted) -> None:
         result = event.result
@@ -546,6 +604,26 @@ class MainWindow(QMainWindow):
         outcome = result.first
         if outcome.is_failed:
             return
+
+    def _on_render_queue_completed(self, event: RenderQueueCompleted) -> None:
+        result = event.result
+        self._editor_view.render_btn.setEnabled(bool(self.selected_targets))
+        self._editor_view.stop_btn.setVisible(False)
+
+        if result.is_cancelled:
+            self._stop_render_preview()
+            self._render_view.reset()
+            self._switch_to_view(_VIEW_EDITOR)
+            return
+
+        self._render_view.set_global_progress(100, "Render complete!")
+        for entry in result.entries:
+            self._render_view.set_platform_info(self._target_label(entry.target), 100)
+        self._render_view.show_done()
+        self._render_view.preview.dimmed = False
+        self._render_view.preview.update()
+
+        self._show_queue_result(result)
 
     def _on_render_done(self) -> None:
         """Navigate back to editor after user clicks Done on render view."""
@@ -622,6 +700,18 @@ class MainWindow(QMainWindow):
     def _show_multipart_result(self, result: RenderJobResult) -> None:
         pass
 
+    def _show_queue_result(self, result: RenderQueueResult) -> None:
+        if not result.failures:
+            return
+        failed = ", ".join(
+            self._target_label(entry.target) for entry in result.failures
+        )
+        QMessageBox.warning(
+            self,
+            "Render failed",
+            f"Could not render: {failed}",
+        )
+
     def _stop_render(self) -> None:
         self._bus.publish(StopRendering())
 
@@ -644,6 +734,10 @@ class MainWindow(QMainWindow):
             split_ratio=self.split_ratio,
             volume=self._volume,
             crops=self._editor_view.crop_widget.selection,
+            selected_targets=tuple(
+                TargetPreference(platform, format_key)
+                for platform, format_key in self.selected_targets
+            ),
         )
         SavePreferencesUseCase(self._prefs_repository).save(preferences)
 
@@ -753,6 +847,10 @@ class MainWindow(QMainWindow):
         m = int(s // 60)
         sec = int(s % 60)
         return f"{m}:{sec:02d}"
+
+    @staticmethod
+    def _target_label(target: RenderTarget) -> str:
+        return f"{target.platform.upper()} / {target.format_key.upper()}"
 
 
 def run(file_path: str | None = None) -> None:

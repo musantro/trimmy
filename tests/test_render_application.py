@@ -11,13 +11,19 @@ from trimmy.rendering.application.probe_video_use_case import (
     ProbeVideoRequest,
     ProbeVideoUseCase,
 )
+from trimmy.rendering.application.render_queue_use_case import RenderQueueUseCase
 from trimmy.rendering.application.render_segments_use_case import (
     RenderJobRequest,
     RenderSegmentsUseCase,
 )
 from trimmy.rendering.application.render_video_use_case import RenderVideoUseCase
 from trimmy.rendering.domain.gateways import RenderingBackend, VideoProber
-from trimmy.rendering.domain.models import ProcessResult, VideoMetadata
+from trimmy.rendering.domain.models import (
+    ProcessResult,
+    RenderQueueItem,
+    RenderTarget,
+    VideoMetadata,
+)
 from trimmy.rendering.infrastructure.in_memory_preset_repository import (
     InMemoryPresetRepository,
 )
@@ -227,3 +233,75 @@ def test_segments_failure_breaks_early():
     assert result.failures
     assert result.parts == 1
     assert result.failures[0].index == 1
+
+
+# ---- queued render ----
+
+
+def _queue_item(platform: str, format_key: str = "post") -> RenderQueueItem:
+    target = RenderTarget(platform=platform, format_key=format_key, quality="max")
+    return RenderQueueItem(
+        target=target,
+        spec=make_spec(platform=platform),
+        max_duration=None,
+    )
+
+
+def test_queue_renders_targets_in_order():
+    backend = FakeBackend(results=[ProcessResult(0, ""), ProcessResult(0, "")])
+    use_case = RenderQueueUseCase(RenderSegmentsUseCase(_presets(), backend), backend)
+
+    result = use_case.render(
+        (
+            _queue_item("instagram", "reels"),
+            _queue_item("twitter", "post"),
+        ),
+    )
+
+    assert result.parts == 2
+    assert [entry.target.platform for entry in result.entries] == [
+        "instagram",
+        "twitter",
+    ]
+    assert len(backend.commands) == 2
+
+
+def test_queue_reports_global_progress_across_targets():
+    backend = FakeBackend(
+        results=[ProcessResult(0, ""), ProcessResult(0, "")],
+        report_progress=50,
+    )
+    use_case = RenderQueueUseCase(RenderSegmentsUseCase(_presets(), backend), backend)
+    progress: list[tuple[str, int, int]] = []
+
+    use_case.render(
+        (
+            _queue_item("instagram", "reels"),
+            _queue_item("twitter", "post"),
+        ),
+        on_progress=lambda target, pct, global_pct: progress.append(
+            (target.platform, pct, global_pct),
+        ),
+    )
+
+    assert ("instagram", 0, 0) in progress
+    assert ("instagram", 50, 25) in progress
+    assert ("instagram", 100, 50) in progress
+    assert ("twitter", 50, 75) in progress
+    assert progress[-1] == ("twitter", 100, 100)
+
+
+def test_queue_stops_after_failure():
+    backend = FakeBackend(results=[ProcessResult(1, "bad"), ProcessResult(0, "")])
+    use_case = RenderQueueUseCase(RenderSegmentsUseCase(_presets(), backend), backend)
+
+    result = use_case.render(
+        (
+            _queue_item("instagram", "reels"),
+            _queue_item("twitter", "post"),
+        ),
+    )
+
+    assert result.failures
+    assert result.parts == 1
+    assert len(backend.commands) == 1
