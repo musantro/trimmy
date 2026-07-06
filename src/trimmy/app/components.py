@@ -11,7 +11,15 @@ if sys.version_info >= (3, 12):
 else:
     from typing_extensions import override
 
-from PySide6.QtCore import QEvent, QSize, Qt, Signal
+from PySide6.QtCore import (
+    Property,
+    QEasingCurve,
+    QEvent,
+    QPropertyAnimation,
+    QSize,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import (
     QColor,
     QEnterEvent,
@@ -930,19 +938,47 @@ class PlaybackControls(QWidget):
 class ProgressBar(QWidget):
     """Custom-painted horizontal progress bar."""
 
+    value_changed = Signal(float)
+
     def __init__(self, height: int = 4, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedHeight(height)
-        self._value: int = 0
+        self._value: float = 0.0
+        self._target_value: int = 0
+        self._animation = QPropertyAnimation(self, b"animated_value", self)
+        self._animation.setDuration(420)
+        self._animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
-    def set_value(self, value: int) -> None:
+    def set_value(self, value: int, *, animated: bool = True) -> None:
         """Set progress percentage (0-100)."""
-        self._value = max(0, min(100, value))
-        self.update()
+        value = max(0, min(100, value))
+        self._target_value = value
+        self._animation.stop()
+        if not animated:
+            self.set_animated_value(float(value))
+            return
+        if abs(self._value - value) < 0.01:
+            self.set_animated_value(float(value))
+            return
+        self._animation.setStartValue(self._value)
+        self._animation.setEndValue(float(value))
+        self._animation.start()
 
     def value(self) -> int:
-        """Return the current progress percentage."""
+        """Return the target progress percentage."""
+        return self._target_value
+
+    def _animated_value(self) -> float:
+        """Return the currently painted progress value."""
         return self._value
+
+    def set_animated_value(self, value: float) -> None:
+        """Update the painted progress percentage."""
+        self._value = max(0.0, min(100.0, value))
+        self.value_changed.emit(self._value)
+        self.update()
+
+    animated_value: Property = Property(float, _animated_value, set_animated_value)
 
     @override
     def paintEvent(self, event: QPaintEvent) -> None:
@@ -964,6 +1000,22 @@ class ProgressBar(QWidget):
             p.drawRoundedRect(0, 0, fill_w, h, radius, radius)
 
         p.end()
+
+
+class AnimatedPercentageLabel(QLabel):
+    """Percentage label driven by a progress bar's animated value."""
+
+    def __init__(self, value: int = 0, parent: QWidget | None = None) -> None:
+        super().__init__(f"{value}%", parent)
+        self._display_value = value
+
+    def set_progress_value(self, value: float) -> None:
+        """Display *value* as a rounded whole-number percentage."""
+        display_value = max(0, min(100, round(value)))
+        if display_value == self._display_value:
+            return
+        self._display_value = display_value
+        self.setText(f"{display_value}%")
 
 
 class RenderProgressItem(QWidget):
@@ -990,7 +1042,7 @@ class RenderProgressItem(QWidget):
 
         header.addStretch()
 
-        self._pct_label = QLabel("0%")
+        self._pct_label = AnimatedPercentageLabel()
         self._pct_label.setFont(name_font)
         self._pct_label.setStyleSheet(f"color: {Colors.PRIMARY_CONTAINER};")
         header.addWidget(self._pct_label)
@@ -998,13 +1050,13 @@ class RenderProgressItem(QWidget):
         layout.addLayout(header)
 
         self._progress = ProgressBar(height=4)
+        self._progress.value_changed.connect(self._pct_label.set_progress_value)
         layout.addWidget(self._progress)
 
     def set_progress(self, value: int) -> None:
         """Update the progress bar and percentage text."""
         value = max(0, min(100, value))
         self._progress.set_value(value)
-        self._pct_label.setText(f"{value}%")
 
     def set_status(self, text: str) -> None:
         """Replace the percentage with a status string like 'Done'."""
