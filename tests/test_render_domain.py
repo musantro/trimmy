@@ -11,6 +11,9 @@ from trimmy.rendering.domain.models import (
     DimensionPlan,
     RenderJobResult,
     RenderOutcome,
+    RenderQueueEntryResult,
+    RenderQueueResult,
+    RenderTarget,
     Resolution,
 )
 from trimmy.rendering.domain.services import (
@@ -90,6 +93,22 @@ def test_render_job_result_failures_and_cancel():
     result = RenderJobResult(outcomes=(failed, cancelled), multipart=True)
     assert result.is_cancelled is True
     assert result.failures == (failed,)
+
+
+def test_render_target_key():
+    target = RenderTarget("instagram", "reels", "max")
+    assert target.key == "instagram_reels_max"
+
+
+def test_render_queue_result_aggregates():
+    target = RenderTarget("instagram", "reels", "max")
+    result = RenderJobResult(outcomes=(RenderOutcome.cancelled(),), multipart=False)
+    entry = RenderQueueEntryResult(target, result)
+    queue = RenderQueueResult(entries=(entry,))
+    assert queue.entries == (entry,)
+    assert queue.parts == 1
+    assert queue.is_cancelled is True
+    assert queue.failures == ()
 
 
 # ---- specifications ----

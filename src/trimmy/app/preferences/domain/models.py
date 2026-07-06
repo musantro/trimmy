@@ -11,6 +11,14 @@ DEFAULT_VOLUME = 50
 
 
 @dataclass(frozen=True)
+class TargetPreference:
+    """A persisted platform/format selection."""
+
+    platform: str
+    format_key: str
+
+
+@dataclass(frozen=True)
 class Preferences:
     """A snapshot of the user's editor settings."""
 
@@ -20,15 +28,18 @@ class Preferences:
     split_ratio: float
     volume: int
     crops: CropSelection
+    selected_targets: tuple[TargetPreference, ...] = ()
 
     @classmethod
     def default(cls) -> Preferences:
         """Return the built-in default preferences."""
+        target = TargetPreference(platform="instagram", format_key="feed")
         return cls(
-            selected_platform="instagram",
-            selected_format="feed",
+            selected_platform=target.platform,
+            selected_format=target.format_key,
             selected_quality="max",
             split_ratio=DEFAULT_SPLIT_RATIO,
             volume=DEFAULT_VOLUME,
             crops=CropSelection(top=CropRect(), bottom=CropRect()),
+            selected_targets=(target,),
         )

@@ -734,6 +734,7 @@ class PlatformSelector(QWidget):
 
     platform_changed = Signal(str)
     format_changed = Signal(str, str)
+    selection_changed = Signal()
 
     def __init__(
         self,
@@ -746,6 +747,7 @@ class PlatformSelector(QWidget):
         self._platforms = list(platforms)
         self._selected_platform = ""
         self._selected_format = ""
+        self._selected_targets: set[tuple[str, str]] = set()
         self._format_rows: dict[str, QWidget] = {}
         self._format_buttons: dict[str, dict[str, QPushButton]] = {}
 
@@ -789,6 +791,7 @@ class PlatformSelector(QWidget):
             self._format_buttons[plat_key] = {}
             for fmt_key, fmt_label in formats:
                 fmt_btn = QPushButton(fmt_label)
+                fmt_btn.setCheckable(True)
                 fmt_btn.setCursor(Qt.PointingHandCursor)  # ty: ignore[unresolved-attribute]
                 fmt_btn.clicked.connect(
                     lambda _c, pk=plat_key, fk=fmt_key: self._on_format_clicked(pk, fk),
@@ -802,25 +805,56 @@ class PlatformSelector(QWidget):
         if selected_platform:
             self.set_platform(selected_platform)
             if selected_format:
-                self._select_format_internal(selected_platform, selected_format)
+                self.set_targets(((selected_platform, selected_format),))
         elif self._platforms:
             first_key = self._platforms[0][0]
             self.set_platform(first_key)
             first_formats = self._platforms[0][2]
             if first_formats:
-                self._select_format_internal(first_key, first_formats[0][0])
+                self.set_targets(((first_key, first_formats[0][0]),))
 
     def _on_format_clicked(self, platform_key: str, format_key: str) -> None:
         if self._selected_platform != platform_key:
-            self.set_platform(platform_key)
-        self._select_format_internal(platform_key, format_key)
+            self._selected_platform = platform_key
+            self.platform_changed.emit(platform_key)
+        target = (platform_key, format_key)
+        if target in self._selected_targets:
+            self._selected_targets.remove(target)
+        else:
+            self._selected_targets.add(target)
+        self._selected_format = format_key
+        self._refresh_styles()
         self.format_changed.emit(platform_key, format_key)
+        self.selection_changed.emit()
 
     def _select_format_internal(self, platform_key: str, format_key: str) -> None:
         self._selected_format = format_key
+        self._selected_targets.add((platform_key, format_key))
+        self._refresh_styles()
+
+    def _refresh_styles(self) -> None:
+        """Refresh row and button styles from preview and checked targets."""
+        for key, row in self._format_rows.items():
+            is_preview = key == self._selected_platform
+            has_selection = any(pk == key for pk, _fk in self._selected_targets)
+            alpha = "0.55" if is_preview else "0.35" if has_selection else "0.2"
+            border_color = (
+                Colors.PRIMARY_CONTAINER
+                if is_preview
+                else Colors.OUTLINE_VARIANT
+                if has_selection
+                else "transparent"
+            )
+            row.setStyleSheet(
+                f"background: rgba(51, 53, 57, {alpha});"
+                f" border: 1px solid {border_color};"
+                f" border-radius: {Radii.DEFAULT}px;",
+            )
+
         for pk, buttons in self._format_buttons.items():
             for fk, btn in buttons.items():
-                is_selected = pk == platform_key and fk == format_key
+                is_selected = (pk, fk) in self._selected_targets
+                btn.setChecked(is_selected)
                 if is_selected:
                     btn.setStyleSheet(
                         f"background: {Colors.PRIMARY_CONTAINER};"
@@ -842,26 +876,45 @@ class PlatformSelector(QWidget):
         """Select the platform identified by *name*."""
         prev = self._selected_platform
         self._selected_platform = name
-
-        for key, row in self._format_rows.items():
-            selected = key == name
-            border_color = Colors.OUTLINE_VARIANT if selected else "transparent"
-            row.setStyleSheet(
-                f"background: rgba(51, 53, 57, {'0.5' if selected else '0.2'});"
-                f" border: 1px solid {border_color};"
-                f" border-radius: {Radii.DEFAULT}px;",
-            )
+        self._refresh_styles()
 
         if prev != name:
             self.platform_changed.emit(name)
             for _pk, _pl, formats in self._platforms:
                 if _pk == name and formats:
-                    self._select_format_internal(name, formats[0][0])
+                    self._selected_format = formats[0][0]
+                    if not any(pk == name for pk, _fk in self._selected_targets):
+                        self._select_format_internal(name, formats[0][0])
+                        self.selection_changed.emit()
                     break
 
     def set_format(self, platform: str, format_key: str) -> None:
         """Programmatically select a format for a platform."""
         self._select_format_internal(platform, format_key)
+
+    def set_targets(self, targets: Sequence[tuple[str, str]]) -> None:
+        """Programmatically replace the checked target set."""
+        valid = {
+            (platform, fmt)
+            for platform, _label, formats in self._platforms
+            for fmt, _fmt_label in formats
+        }
+        self._selected_targets = {target for target in targets if target in valid}
+        if self._selected_targets:
+            platform, format_key = sorted(self._selected_targets)[0]
+            self._selected_platform = platform
+            self._selected_format = format_key
+        self._refresh_styles()
+
+    def selected_targets(self) -> tuple[tuple[str, str], ...]:
+        """Return selected platform/format pairs in UI order."""
+        ordered: list[tuple[str, str]] = []
+        for platform, _label, formats in self._platforms:
+            for format_key, _format_label in formats:
+                target = (platform, format_key)
+                if target in self._selected_targets:
+                    ordered.append(target)
+        return tuple(ordered)
 
     def selected_platform_name(self) -> str:
         """Return the key of the currently selected platform."""
