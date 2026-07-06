@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -270,6 +274,181 @@ def capture_states(
     return paths
 
 
+def capture_progress_videos(
+    out_dir: Path,
+    *,
+    width: int = 1180,
+    height: int = 820,
+    fps: int = 30,
+) -> list[Path]:
+    """Render short videos showing animated progress updates."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    window = RenderPlaygroundWindow(controls=False)
+    window.resize(width, height)
+    window.show()
+    QApplication.processEvents()
+
+    videos = [
+        _capture_progress_video(
+            window,
+            out_dir,
+            name="single-platform",
+            platforms=("TikTok",),
+            updates=(
+                (8, "Preparing segments...", (("TikTok", 8),), 650),
+                (48, "00:38 remaining", (("TikTok", 48),), 650),
+                (92, "Finalizing output...", (("TikTok", 92),), 650),
+                (100, "Render complete!", (("TikTok", 100),), 850),
+            ),
+            fps=fps,
+        ),
+        _capture_progress_video(
+            window,
+            out_dir,
+            name="multipart",
+            platforms=("TikTok part 1", "TikTok part 2", "TikTok part 3"),
+            updates=(
+                (
+                    33,
+                    "Part 1 of 3",
+                    (
+                        ("TikTok part 1", 100),
+                        ("TikTok part 2", 0),
+                        ("TikTok part 3", 0),
+                    ),
+                    700,
+                ),
+                (
+                    67,
+                    "Part 2 of 3",
+                    (
+                        ("TikTok part 1", 100),
+                        ("TikTok part 2", 67),
+                        ("TikTok part 3", 0),
+                    ),
+                    700,
+                ),
+                (
+                    100,
+                    "Render complete!",
+                    (
+                        ("TikTok part 1", 100),
+                        ("TikTok part 2", 100),
+                        ("TikTok part 3", 100),
+                    ),
+                    900,
+                ),
+            ),
+            fps=fps,
+        ),
+        _capture_progress_video(
+            window,
+            out_dir,
+            name="rapid-updates",
+            platforms=("TikTok",),
+            updates=(
+                (5, "Warming encoder...", (("TikTok", 5),), 260),
+                (24, "00:51 remaining", (("TikTok", 24),), 260),
+                (51, "00:32 remaining", (("TikTok", 51),), 260),
+                (78, "00:14 remaining", (("TikTok", 78),), 260),
+                (100, "Render complete!", (("TikTok", 100),), 900),
+            ),
+            fps=fps,
+        ),
+    ]
+
+    window.close()
+    return videos
+
+
+def _capture_progress_video(
+    window: RenderPlaygroundWindow,
+    out_dir: Path,
+    *,
+    name: str,
+    platforms: tuple[str, ...],
+    updates: tuple[tuple[int, str, tuple[tuple[str, int], ...], int], ...],
+    fps: int,
+) -> Path:
+    window.render_view.reset()
+    window.render_view.preview.set_frame(window._demo_frame)
+    window.render_view.preview.set_selection(_demo_selection())
+    window.render_view.preview.split_ratio = 0.53
+    window.render_view.preview.dimmed = True
+    window.render_view.set_global_progress(0, "Waiting for encoder...")
+    for platform in platforms:
+        window.render_view.set_platform_info(platform, 0)
+    QApplication.processEvents()
+
+    output_path = out_dir / f"render-progress-{name}.mp4"
+    with tempfile.TemporaryDirectory(prefix=f"trimmy-{name}-frames-") as tmp:
+        frames_dir = Path(tmp)
+        frame_index = _capture_video_interval(window, frames_dir, 0, 350, fps)
+        for global_progress, estimate, platform_progress, duration_ms in updates:
+            window.render_view.set_global_progress(global_progress, estimate)
+            for platform, progress in platform_progress:
+                window.render_view.set_platform_info(platform, progress)
+            if global_progress >= 100:
+                window.render_view.preview.dimmed = False
+                window.render_view.show_done()
+            frame_index = _capture_video_interval(
+                window,
+                frames_dir,
+                frame_index,
+                duration_ms,
+                fps,
+            )
+        _encode_video(frames_dir, output_path, fps)
+    return output_path
+
+
+def _capture_video_interval(
+    window: RenderPlaygroundWindow,
+    frames_dir: Path,
+    frame_index: int,
+    duration_ms: int,
+    fps: int,
+) -> int:
+    frame_interval = 1.0 / fps
+    deadline = time.monotonic() + duration_ms / 1000
+    next_frame = time.monotonic()
+    while time.monotonic() < deadline:
+        QApplication.processEvents()
+        now = time.monotonic()
+        if now >= next_frame:
+            frame = frames_dir / f"frame_{frame_index:05d}.png"
+            window.grab().save(str(frame))
+            frame_index += 1
+            next_frame += frame_interval
+        time.sleep(0.003)
+    return frame_index
+
+
+def _encode_video(frames_dir: Path, output_path: Path, fps: int) -> None:
+    ffmpeg_path = shutil.which("ffmpeg")
+    if ffmpeg_path is None:
+        msg = "ffmpeg is required to export render progress videos"
+        raise RuntimeError(msg)
+    subprocess.run(  # noqa: S603
+        [
+            ffmpeg_path,
+            "-y",
+            "-framerate",
+            str(fps),
+            "-i",
+            str(frames_dir / "frame_%05d.png"),
+            "-vf",
+            "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+            "-pix_fmt",
+            "yuv420p",
+            str(output_path),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -285,13 +464,19 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--width", type=int, default=1180)
     parser.add_argument("--height", type=int, default=820)
+    parser.add_argument(
+        "--animation-dir",
+        type=Path,
+        help="Save progress animation videos and exit.",
+    )
+    parser.add_argument("--animation-fps", type=int, default=30)
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run the interactive playground or snapshot exporter."""
     args = _parse_args(list(sys.argv[1:] if argv is None else argv))
-    if args.snapshot_dir is not None:
+    if args.snapshot_dir is not None or args.animation_dir is not None:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     app = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
@@ -305,6 +490,17 @@ def main(argv: list[str] | None = None) -> int:
             state_filter=state_filter,
             width=args.width,
             height=args.height,
+        )
+        for path in paths:
+            sys.stdout.write(f"{path}\n")
+        return 0
+
+    if args.animation_dir is not None:
+        paths = capture_progress_videos(
+            args.animation_dir,
+            width=args.width,
+            height=args.height,
+            fps=args.animation_fps,
         )
         for path in paths:
             sys.stdout.write(f"{path}\n")

@@ -17,6 +17,7 @@ from qt_material_icons import MaterialIcon
 from trimmy.app.components import (
     ActionButton,
     ActionButtonVariant,
+    AnimatedPercentageLabel,
     ProgressBar,
     RenderProgressItem,
     SectionLabel,
@@ -112,7 +113,7 @@ class RenderView(QWidget):
         pct_font.setPixelSize(28)
         pct_font.setWeight(QFont.Weight(Typography.HEADLINE_WEIGHT))
 
-        self.global_pct_label = QLabel("0%")
+        self.global_pct_label = AnimatedPercentageLabel()
         self.global_pct_label.setFont(pct_font)
         self.global_pct_label.setStyleSheet(
             f"color: {Colors.PRIMARY_CONTAINER}; background: transparent;",
@@ -123,6 +124,9 @@ class RenderView(QWidget):
 
         # Progress bar
         self.global_progress = ProgressBar(height=8)
+        self.global_progress.value_changed.connect(
+            self.global_pct_label.set_progress_value,
+        )
         global_section.addWidget(self.global_progress)
 
         # Estimate row
@@ -205,7 +209,6 @@ class RenderView(QWidget):
         """Update global progress bar, percentage label, and estimate text."""
         percent = max(0, min(100, percent))
         self.global_progress.set_value(percent)
-        self.global_pct_label.setText(f"{percent}%")
         self.estimate_label.setText(self._remaining_time_text(estimate_text))
 
     def set_platform_info(self, name: str, percent: int) -> None:
@@ -239,8 +242,8 @@ class RenderView(QWidget):
         self.cancel_btn.setIcon(MaterialIcon("cancel"))
         self.cancel_btn._apply_variant(ActionButtonVariant.DANGER)
 
-        self.global_progress.set_value(0)
-        self.global_pct_label.setText("0%")
+        self.global_progress.set_value(0, animated=False)
+        self.global_pct_label.set_progress_value(0)
         self.estimate_label.setText("--:-- remaining")
 
         for item in self._platform_items.values():
