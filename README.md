@@ -77,6 +77,22 @@ uv sync
 uv run python -m trimmy
 ```
 
+### Render screen playground
+
+The render screen can be exercised without opening or encoding a video:
+
+```bash
+uv run trimmy-render-playground
+```
+
+Export deterministic screenshots for every render step:
+
+```bash
+uv run trimmy-render-playground --snapshot-dir .codex/render-playground
+```
+
+Use `--state rendering` or repeat `--state` to capture specific states.
+
 See [CHANGELOG.md](https://github.com/musantro/trimmy/blob/master/CHANGELOG.md)
 for release history.
 

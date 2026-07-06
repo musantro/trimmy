@@ -519,7 +519,7 @@ class MainWindow(QMainWindow):
             self._render_worker.stop()
 
     def _on_render_progressed(self, event: RenderProgressed) -> None:
-        self._render_view.set_global_progress(event.pct, "Rendering...")
+        self._render_view.set_global_progress(event.pct, "--:-- remaining")
         self._render_view.set_platform_info(self.selected_platform, event.pct)
 
     def _on_render_completed(self, event: RenderCompleted) -> None:

@@ -38,6 +38,7 @@ build-backend = "uv_build"
 
 [project.scripts]
 trimmy = "trimmy.__main__:main"
+trimmy-render-playground = "trimmy.app.render_playground:main"
 
 [dependency-groups]
 dev = [
