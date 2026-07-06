@@ -1,3 +1,9 @@
+## v0.10.0 (2026-07-06)
+
+### Feat
+
+- animate render progress bars
+
 ## v0.9.0 (2026-07-06)
 
 ### Feat
