@@ -1,3 +1,9 @@
+## v0.11.1 (2026-07-06)
+
+### Fix
+
+- allow seeking past trim end while paused
+
 ## v0.11.0 (2026-07-06)
 
 ### Feat
