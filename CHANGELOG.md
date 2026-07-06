@@ -1,3 +1,9 @@
+## v0.11.0 (2026-07-06)
+
+### Feat
+
+- add multi-target render queue
+
 ## v0.10.0 (2026-07-06)
 
 ### Feat
