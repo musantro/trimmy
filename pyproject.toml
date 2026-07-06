@@ -1,6 +1,6 @@
 [project]
 name = "trimmy"
-version = "0.8.4"
+version = "0.9.0"
 description = "Trimmy — vertical split crop video editor"
 readme = "README.md"
 license = "MIT"
