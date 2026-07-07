@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from trimmy.app.components import SidebarNavigation, TopNavBar
+from trimmy.app.components import TopNavBar
 from trimmy.app.theme import Colors, Spacing, build_stylesheet, load_fonts
 from trimmy.app.views.render_view import RenderView
 from trimmy.editing.shared.domain.models import CropRect, CropSelection
@@ -159,19 +159,10 @@ class RenderPlaygroundWindow(QMainWindow):
 
         root.addWidget(TopNavBar(version_text="render playground"))
 
-        body = QHBoxLayout()
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(0)
-        root.addLayout(body)
-
-        sidebar = SidebarNavigation()
-        sidebar.set_active("render")
-        body.addWidget(sidebar)
-
         content = QVBoxLayout()
         content.setContentsMargins(0, 0, 0, 0)
         content.setSpacing(0)
-        body.addLayout(content, 1)
+        root.addLayout(content, 1)
 
         if controls:
             content.addWidget(self._build_controls())
@@ -252,6 +243,7 @@ def capture_states(
     state_filter: set[str] | None = None,
     width: int = 1180,
     height: int = 820,
+    settle_ms: int = 500,
 ) -> list[Path]:
     """Render selected playground states and save screenshots."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -265,13 +257,20 @@ def capture_states(
         if state_filter is not None and state.name not in state_filter:
             continue
         window.apply_state(state)
-        QApplication.processEvents()
+        _process_events_for(settle_ms)
         path = out_dir / f"render-{state.name}.png"
         window.grab().save(str(path))
         paths.append(path)
 
     window.close()
     return paths
+
+
+def _process_events_for(duration_ms: int) -> None:
+    deadline = time.monotonic() + duration_ms / 1000
+    while time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.003)
 
 
 def capture_progress_videos(
