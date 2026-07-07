@@ -29,6 +29,8 @@ class Preferences:
     volume: int
     crops: CropSelection
     selected_targets: tuple[TargetPreference, ...] = ()
+    last_video_folder: str = ""
+    last_output_folder: str = ""
 
     @classmethod
     def default(cls) -> Preferences:
@@ -42,4 +44,6 @@ class Preferences:
             volume=DEFAULT_VOLUME,
             crops=CropSelection(top=CropRect(), bottom=CropRect()),
             selected_targets=(target,),
+            last_video_folder="",
+            last_output_folder="",
         )

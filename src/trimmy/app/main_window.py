@@ -502,6 +502,8 @@ class MainWindow(QMainWindow):
             (target.platform, target.format_key)
             for target in self._prefs.selected_targets
         ) or ((self.selected_platform, self.selected_format),)
+        self._last_video_folder = self._prefs.last_video_folder
+        self._last_output_folder = self._prefs.last_output_folder
         self.split_ratio: float = self._prefs.split_ratio
         self._waiting_first_frame: bool = False
 
@@ -647,7 +649,7 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open Video",
-            "",
+            self._dialog_start_folder(self._last_video_folder),
             "Video Files (*.mp4 *.mkv *.mov *.avi *.webm);;All Files (*)",
         )
         if path:
@@ -676,6 +678,7 @@ class MainWindow(QMainWindow):
 
         self.video_info = info
         self._source_path = path
+        self._last_video_folder = str(path.parent)
 
         self._editor_view.crop_widget.set_source_size(info.width, info.height)
         self._editor_view.crop_widget.init_crops()
@@ -947,21 +950,24 @@ class MainWindow(QMainWindow):
             out_path, _ = QFileDialog.getSaveFileName(
                 self,
                 "Save Rendered Video",
-                str(src.parent / default_name),
+                str(self._output_dialog_folder(src) / default_name),
                 "MP4 Files (*.mp4)",
             )
             if not out_path:
                 return None
-            return {targets[0]: self._available_output_path(Path(out_path), reserved)}
+            selected = Path(out_path)
+            self._last_output_folder = str(selected.parent)
+            return {targets[0]: self._available_output_path(selected, reserved)}
 
         out_dir = QFileDialog.getExistingDirectory(
             self,
             "Choose Render Output Folder",
-            str(src.parent),
+            str(self._output_dialog_folder(src)),
         )
         if not out_dir:
             return None
         output_root = Path(out_dir)
+        self._last_output_folder = str(output_root)
         paths: dict[tuple[str, str], Path] = {}
         for platform, format_key in targets:
             path = output_root / self._default_output_name(
@@ -1406,12 +1412,23 @@ class MainWindow(QMainWindow):
             split_ratio=self.split_ratio,
             volume=self._volume,
             crops=self._editor_view.crop_widget.selection,
+            last_video_folder=self._last_video_folder,
+            last_output_folder=self._last_output_folder,
             selected_targets=tuple(
                 TargetPreference(platform, format_key)
                 for platform, format_key in self.selected_targets
             ),
         )
         SavePreferencesUseCase(self._prefs_repository).save(preferences)
+
+    @staticmethod
+    def _dialog_start_folder(folder: str) -> str:
+        path = Path(folder)
+        return str(path) if folder and path.is_dir() else ""
+
+    def _output_dialog_folder(self, src: Path) -> Path:
+        folder = Path(self._last_output_folder)
+        return folder if self._last_output_folder and folder.is_dir() else src.parent
 
     def _restore_crops(self) -> None:
         saved = self._prefs.crops
