@@ -21,6 +21,7 @@ classifiers = [
     "Topic :: Multimedia :: Video :: Conversion",
 ]
 dependencies = [
+    "pydantic>=2",
     "PySide6>=6.5",
     "qt-material-icons>=0.5.0",
     "typing_extensions>=4.0; python_version < '3.12'",
@@ -38,7 +39,6 @@ build-backend = "uv_build"
 
 [project.scripts]
 trimmy = "trimmy.__main__:main"
-trimmy-render-playground = "trimmy.app.render_playground:main"
 
 [dependency-groups]
 dev = [
@@ -115,6 +115,8 @@ ignore = ["D107", "D203", "D212", "D415", "B008"]
   "S106",
   "D",
 ]
+"src/trimmy/app/control_adapter.py" = ["D102"]
+"src/trimmy/control/domain/models.py" = ["D102"]
 
 [tool.ty.environment]
 python-version = "3.10"

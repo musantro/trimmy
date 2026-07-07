@@ -1,0 +1,1 @@
+"""Control domain value objects."""
