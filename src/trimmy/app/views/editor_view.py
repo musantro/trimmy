@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSizePolicy,
-    QStackedLayout,
     QVBoxLayout,
     QWidget,
 )
@@ -97,39 +96,34 @@ class EditorView(QWidget):
         left_layout.addSpacing(Spacing.SM)
         left_layout.addWidget(self.audio_meter)
 
-        # Playback centered, volume right-aligned via stacked layers
+        # Playback centered, volume right-aligned without overlapping hit areas.
         controls_container = QWidget()
         controls_container.setStyleSheet("background: transparent; border: none;")
-        controls_stack = QStackedLayout(controls_container)
-        controls_stack.setStackingMode(QStackedLayout.StackAll)  # ty: ignore[unresolved-attribute]
-        controls_stack.setContentsMargins(0, 0, 0, 0)
+        controls_layout = QHBoxLayout(controls_container)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(0)
 
-        center_layer = QWidget()
-        center_layer.setAttribute(
-            Qt.WA_TransparentForMouseEvents,  # ty: ignore[unresolved-attribute]
-            False,  # noqa: FBT003
-        )
-        center_layout = QHBoxLayout(center_layer)
-        center_layout.setContentsMargins(0, 0, 0, 0)
+        edge_width = 180
+        left_balance = QWidget()
+        left_balance.setFixedWidth(edge_width)
+        controls_layout.addWidget(left_balance)
+
         self.playback = PlaybackControls()
-        center_layout.addStretch()
-        center_layout.addWidget(self.playback)
-        center_layout.addStretch()
+        controls_layout.addStretch()
+        controls_layout.addWidget(self.playback)
+        controls_layout.addStretch()
 
-        right_layer = QWidget()
-        right_layer.setAttribute(
-            Qt.WA_TransparentForMouseEvents,  # ty: ignore[unresolved-attribute]
-            False,  # noqa: FBT003
-        )
-        right_layout_vol = QHBoxLayout(right_layer)
+        right_slot = QWidget()
+        right_slot.setFixedWidth(edge_width)
+        right_layout_vol = QHBoxLayout(right_slot)
         right_layout_vol.setContentsMargins(0, 0, 0, 0)
         self.volume_control = VolumeControl()
         self.volume_control.setMaximumWidth(180)
-        right_layout_vol.addStretch()
-        right_layout_vol.addWidget(self.volume_control)
-
-        controls_stack.addWidget(center_layer)
-        controls_stack.addWidget(right_layer)
+        right_layout_vol.addWidget(
+            self.volume_control,
+            alignment=Qt.AlignRight,  # ty: ignore[unresolved-attribute]
+        )
+        controls_layout.addWidget(right_slot)
 
         left_layout.addSpacing(Spacing.SECTION_GAP)
         left_layout.addWidget(controls_container)
