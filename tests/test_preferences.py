@@ -38,6 +38,8 @@ def test_preferences_default():
     assert prefs.volume == 50
     assert prefs.crops.top.is_empty
     assert prefs.crops.bottom.is_empty
+    assert prefs.last_video_folder == ""
+    assert prefs.last_output_folder == ""
 
 
 def test_load_preferences_use_case():

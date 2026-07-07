@@ -109,6 +109,14 @@ class JsonPreferencesRepository(PreferencesRepository):
                 data.get("selected_targets"),
                 fallback_target,
             ),
+            last_video_folder=data.get(
+                "last_video_folder",
+                defaults.last_video_folder,
+            ),
+            last_output_folder=data.get(
+                "last_output_folder",
+                defaults.last_output_folder,
+            ),
         )
 
     @override
@@ -127,6 +135,8 @@ class JsonPreferencesRepository(PreferencesRepository):
                 }
                 for target in preferences.selected_targets
             ],
+            "last_video_folder": preferences.last_video_folder,
+            "last_output_folder": preferences.last_output_folder,
             "crops": {
                 "top": _crop_to_dict(preferences.crops.top),
                 "bottom": _crop_to_dict(preferences.crops.bottom),

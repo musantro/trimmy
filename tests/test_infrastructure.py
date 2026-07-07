@@ -65,6 +65,8 @@ def test_json_repo_merges_partial_file(tmp_path):
     prefs = JsonPreferencesRepository(path).load()
     assert prefs.selected_platform == "tiktok"
     assert prefs.selected_quality == "max"
+    assert prefs.last_video_folder == ""
+    assert prefs.last_output_folder == ""
 
 
 def test_json_repo_roundtrip(tmp_path):
@@ -80,6 +82,8 @@ def test_json_repo_roundtrip(tmp_path):
             top=CropRect(10, 20, 500, 400),
             bottom=CropRect(30, 40, 600, 500),
         ),
+        last_video_folder=str(tmp_path / "source"),
+        last_output_folder=str(tmp_path / "renders"),
     )
     repo.save(prefs)
     assert path.exists()
