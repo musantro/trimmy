@@ -6,9 +6,9 @@
 #   - pre-commit stage: ruff, ruff-format, ty
 #   - commit-msg stage: commitizen
 #
-# This hook ensures the dev dependencies are installed and that the git hooks
-# are wired into .git/hooks, so commits made during the session are linted and
-# their messages validated.
+# This hook ensures the dev dependencies are installed and that each worktree
+# has its own Git hooks directory, so commits made during the session are
+# linted and their messages validated.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
@@ -25,6 +25,16 @@ fi
 # Install dev dependencies (prek, ruff, ty, commitizen, pytest, ...).
 echo "Syncing dev dependencies with uv..."
 uv sync --group dev
+
+# Git worktrees share repo-local config, so a repo-level core.hooksPath makes
+# every worktree use the same hook directory. prek honors a local/worktree
+# core.hooksPath, so point this worktree at its own hooks dir before installing.
+worktree_git_dir="$(git rev-parse --git-dir)"
+worktree_hooks_dir="$worktree_git_dir/hooks"
+mkdir -p "$worktree_hooks_dir"
+
+git config --local extensions.worktreeConfig true
+git config --worktree core.hooksPath "$worktree_hooks_dir"
 
 # Verify the git hooks are installed; install any that are missing.
 # `prek install` is idempotent, so this both verifies and (re)installs.
