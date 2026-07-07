@@ -45,7 +45,6 @@ from trimmy import __version__
 from trimmy.app.components import (
     DropOverlay,
     KeybindingsDialog,
-    SidebarNavigation,
     TopNavBar,
 )
 from trimmy.app.preferences.application.load_preferences_use_case import (
@@ -241,16 +240,10 @@ class MainWindow(QMainWindow):
         self._top_nav.help_clicked.connect(self._show_keybindings_help)
         root.addWidget(self._top_nav)
 
-        # Body: sidebar + stacked views
+        # Body: stacked views
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
-
-        self._sidebar = SidebarNavigation()
-        self._sidebar.nav_changed.connect(self._on_nav_changed)
-        self._sidebar.shortcuts_requested.connect(self._show_keybindings_help)
-        self._sidebar.hide()
-        body.addWidget(self._sidebar)
 
         self._stack = QStackedWidget()
 
@@ -309,35 +302,8 @@ class MainWindow(QMainWindow):
         self._drop_overlay = DropOverlay(self._stack)
         self._drop_overlay.hide()
 
-    # ---- navigation ----
-
-    def _on_nav_changed(self, name: str) -> None:
-        if name == "open":
-            if not self.video_info:
-                self._switch_to_view(_VIEW_STARTUP)
-            else:
-                self._open_dialog()
-        elif name == "edit":
-            if self.video_info:
-                self._switch_to_view(_VIEW_EDITOR)
-            else:
-                self._switch_to_view(_VIEW_STARTUP)
-        elif name == "render":
-            if self._render_worker is not None and self._render_worker.isRunning():
-                self._switch_to_view(_VIEW_RENDER)
-            else:
-                self._sidebar.set_active("edit" if self.video_info else "open")
-
     def _switch_to_view(self, index: int) -> None:
         self._stack.setCurrentIndex(index)
-        if index == _VIEW_STARTUP:
-            self._sidebar.hide()
-        else:
-            self._sidebar.show()
-            if index == _VIEW_EDITOR:
-                self._sidebar.set_active("edit")
-            elif index == _VIEW_RENDER:
-                self._sidebar.set_active("render")
 
     # ---- file open ----
 
@@ -393,7 +359,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"Trimmy — {path.name}")
 
         self._switch_to_view(_VIEW_EDITOR)
-        self._sidebar.set_active("edit")
 
     # ---- media player callbacks ----
 

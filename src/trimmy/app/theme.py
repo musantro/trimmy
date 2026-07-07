@@ -140,35 +140,6 @@ QWidget#topnav {{
     border-bottom: 1px solid {Colors.OUTLINE_VARIANT};
 }}
 
-/* ── Sidebar ──────────────────────────────────────────── */
-
-QWidget#sidebar {{
-    background-color: {Colors.SURFACE_CONTAINER};
-    min-width: 80px;
-    max-width: 80px;
-    border-right: 1px solid {Colors.OUTLINE_VARIANT};
-}}
-
-QPushButton#sidebar-btn {{
-    background-color: transparent;
-    color: {Colors.ON_SURFACE_VARIANT};
-    border: none;
-    border-radius: {Radii.LG}px;
-    padding: 16px 4px;
-    font-family: "{Typography.MONO}";
-    font-size: {Typography.LABEL_SM_SIZE}px;
-    font-weight: {Typography.LABEL_SM_WEIGHT};
-}}
-
-QPushButton#sidebar-btn:hover {{
-    background-color: {Colors.SURFACE_CONTAINER_HIGHEST};
-}}
-
-QPushButton#sidebar-btn:checked {{
-    background-color: {Colors.SECONDARY_CONTAINER};
-    color: {Colors.ON_SECONDARY_CONTAINER};
-}}
-
 /* ── Generic Buttons ──────────────────────────────────── */
 
 QPushButton {{
