@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from tests.mothers import make_crop, make_selection, make_source
+from trimmy.editing.crop.application.flip_output_areas_use_case import (
+    FlipOutputAreasRequest,
+    FlipOutputAreasUseCase,
+)
 from trimmy.editing.crop.application.initialize_crops_use_case import (
     InitializeCropsRequest,
     InitializeCropsUseCase,
@@ -47,6 +51,18 @@ def test_synchronize_aspects_use_case():
     assert selection.top.h == 200.0
     assert selection.bottom.h == 400.0
     assert repo.get() == selection
+
+
+def test_flip_output_areas_use_case_swaps_top_and_bottom_properties():
+    top = make_crop(10, 20, 500, 400)
+    bottom = make_crop(30, 40, 600, 500)
+    repo = InMemoryCropSelectionRepository(make_selection(top, bottom))
+    result = FlipOutputAreasUseCase(repo).flip(FlipOutputAreasRequest(0.6))
+
+    assert result.selection.top == bottom
+    assert result.selection.bottom == top
+    assert result.split_ratio == 0.4
+    assert repo.get() == result.selection
 
 
 def test_move_crop_use_case():
