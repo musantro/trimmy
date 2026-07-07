@@ -1564,5 +1564,8 @@ def run(file_path: str | None = None) -> None:
     app.setFont(default_font)
 
     win = MainWindow(file_path)
+    from trimmy.app.control_server import ControlServer  # noqa: PLC0415
+
+    win._control_server = ControlServer(win)  # ty: ignore[unresolved-attribute]
     win.show()
     sys.exit(app.exec())
