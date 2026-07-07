@@ -82,9 +82,9 @@ from trimmy.editing.trim.application.set_trim_end_use_case import (
     SetTrimEndRequest,
     SetTrimEndUseCase,
 )
-from trimmy.editing.trim.application.set_trim_start_use_case import (
-    SetTrimStartRequest,
-    SetTrimStartUseCase,
+from trimmy.editing.trim.application.set_trim_start_at_playhead_use_case import (
+    SetTrimStartAtPlayheadRequest,
+    SetTrimStartAtPlayheadUseCase,
 )
 from trimmy.rendering.application.coordinator import RenderCoordinator
 from trimmy.rendering.application.probe_video_use_case import (
@@ -1455,8 +1455,12 @@ class MainWindow(QMainWindow):
         if not self.video_info:
             return
         pos = self.player.position() / 1000.0
-        updated = SetTrimStartUseCase().set_start(
-            SetTrimStartRequest(self._editor_view.timeline.trim_range, pos),
+        updated = SetTrimStartAtPlayheadUseCase().set_start(
+            SetTrimStartAtPlayheadRequest(
+                self._editor_view.timeline.trim_range,
+                pos,
+                self.video_info.duration,
+            ),
         )
         self._editor_view.timeline.apply_range(updated)
 

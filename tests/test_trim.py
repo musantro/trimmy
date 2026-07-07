@@ -7,6 +7,10 @@ from trimmy.editing.trim.application.set_trim_end_use_case import (
     SetTrimEndRequest,
     SetTrimEndUseCase,
 )
+from trimmy.editing.trim.application.set_trim_start_at_playhead_use_case import (
+    SetTrimStartAtPlayheadRequest,
+    SetTrimStartAtPlayheadUseCase,
+)
 from trimmy.editing.trim.application.set_trim_start_use_case import (
     SetTrimStartRequest,
     SetTrimStartUseCase,
@@ -98,6 +102,20 @@ def test_set_trim_start_use_case():
         SetTrimStartRequest(TrimRange(0.0, 10.0), 4.0),
     )
     assert updated.start == 4.0
+
+
+def test_set_trim_start_at_playhead_moves_end_when_after_current_end():
+    updated = SetTrimStartAtPlayheadUseCase().set_start(
+        SetTrimStartAtPlayheadRequest(TrimRange(2.0, 10.0), 15.0, 30.0),
+    )
+    assert updated == TrimRange(15.0, 15.0)
+
+
+def test_set_trim_start_at_playhead_keeps_end_when_inside_current_range():
+    updated = SetTrimStartAtPlayheadUseCase().set_start(
+        SetTrimStartAtPlayheadRequest(TrimRange(2.0, 10.0), 6.0, 30.0),
+    )
+    assert updated == TrimRange(6.0, 10.0)
 
 
 def test_set_trim_end_use_case():
