@@ -1,3 +1,9 @@
+## v0.14.0 (2026-07-07)
+
+### Feat
+
+- remember last video and output folders
+
 ## v0.13.1 (2026-07-07)
 
 ### Fix
