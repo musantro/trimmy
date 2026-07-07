@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/session-start.sh\"",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$(git rev-parse --show-toplevel)/.codex/hooks/session-start.ps1\"",
             "statusMessage": "Ensuring pre-commit hooks are installed"
           }
         ]
