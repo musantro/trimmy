@@ -74,8 +74,11 @@ class RenderCoordinator:
 
     def _publish_queue_progress(
         self,
+        item_index: int,
         target: RenderTarget,
         target_pct: int,
         global_pct: int,
     ) -> None:
-        self._bus.publish(RenderQueueProgressed(target, target_pct, global_pct))
+        self._bus.publish(
+            RenderQueueProgressed(item_index, target, target_pct, global_pct),
+        )

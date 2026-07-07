@@ -272,23 +272,23 @@ def test_queue_reports_global_progress_across_targets():
         report_progress=50,
     )
     use_case = RenderQueueUseCase(RenderSegmentsUseCase(_presets(), backend), backend)
-    progress: list[tuple[str, int, int]] = []
+    progress: list[tuple[int, str, int, int]] = []
 
     use_case.render(
         (
             _queue_item("instagram", "reels"),
             _queue_item("twitter", "post"),
         ),
-        on_progress=lambda target, pct, global_pct: progress.append(
-            (target.platform, pct, global_pct),
+        on_progress=lambda item_index, target, pct, global_pct: progress.append(
+            (item_index, target.platform, pct, global_pct),
         ),
     )
 
-    assert ("instagram", 0, 0) in progress
-    assert ("instagram", 50, 25) in progress
-    assert ("instagram", 100, 50) in progress
-    assert ("twitter", 50, 75) in progress
-    assert progress[-1] == ("twitter", 100, 100)
+    assert (0, "instagram", 0, 0) in progress
+    assert (0, "instagram", 50, 25) in progress
+    assert (0, "instagram", 100, 50) in progress
+    assert (1, "twitter", 50, 75) in progress
+    assert progress[-1] == (1, "twitter", 100, 100)
 
 
 def test_queue_stops_after_failure():

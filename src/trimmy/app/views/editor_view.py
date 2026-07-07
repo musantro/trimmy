@@ -195,6 +195,34 @@ class EditorView(QWidget):
         )
         bottom.addWidget(self.render_btn)
 
+        self.send_queue_btn = ActionButton(
+            "  SEND TO QUEUE",
+            ActionButtonVariant.SECONDARY,
+            icon_name="playlist_add",
+        )
+        bottom.addSpacing(Spacing.XS)
+        bottom.addWidget(self.send_queue_btn)
+
+        self.render_queue_btn = ActionButton(
+            "  RENDER QUEUE",
+            ActionButtonVariant.SECONDARY,
+            icon_name="queue_play_next",
+        )
+        bottom.addSpacing(Spacing.XS)
+        bottom.addWidget(self.render_queue_btn)
+
+        self.queue_status = QLabel("QUEUE EMPTY")
+        queue_status_font = QFont(Typography.MONO)
+        queue_status_font.setPixelSize(Typography.LABEL_SM_SIZE)
+        queue_status_font.setWeight(QFont.Weight(Typography.LABEL_SM_WEIGHT))
+        self.queue_status.setFont(queue_status_font)
+        self.queue_status.setStyleSheet(
+            f"color: {Colors.ON_SURFACE_VARIANT}; background: transparent;",
+        )
+        self.queue_status.setAlignment(Qt.AlignCenter)  # ty: ignore[unresolved-attribute]
+        bottom.addSpacing(Spacing.XS)
+        bottom.addWidget(self.queue_status)
+
         self.stop_btn = ActionButton(
             "  CANCEL RENDER",
             ActionButtonVariant.DANGER,
