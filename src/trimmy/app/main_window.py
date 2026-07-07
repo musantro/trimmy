@@ -264,6 +264,7 @@ class MainWindow(QMainWindow):
         self._editor_view.crop_widget.crops_changed.connect(self._on_crops_changed)
         self._editor_view.preview.split_ratio_changed.connect(self._on_split_changed)
         self._editor_view.preview.split_ratio = self.split_ratio
+        self._editor_view.flip_split_btn.clicked.connect(self._flip_split)
         self._editor_view.timeline.range_changed.connect(self._on_range_changed)
         self._editor_view.timeline.seek_requested.connect(self._on_seek)
         self._editor_view.playback.play_clicked.connect(self._toggle_play)
@@ -472,6 +473,14 @@ class MainWindow(QMainWindow):
 
     def _on_split_changed(self, ratio: float) -> None:
         self.split_ratio = ratio
+        self._update_crop_aspects()
+
+    def _flip_split(self) -> None:
+        self.split_ratio = self._editor_view.crop_widget.flip_output_areas(
+            self.split_ratio,
+        )
+        self._editor_view.preview.split_ratio = self.split_ratio
+        self._editor_view.preview.update()
         self._update_crop_aspects()
 
     def _update_crop_aspects(self) -> None:

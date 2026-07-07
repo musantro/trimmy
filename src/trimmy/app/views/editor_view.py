@@ -147,6 +147,15 @@ class EditorView(QWidget):
         self.preview = PreviewWidget()
         right_layout.addWidget(self.preview, stretch=1)
 
+        self.flip_split_btn = ActionButton(
+            "  FLIP TOP/BOTTOM",
+            ActionButtonVariant.SECONDARY,
+            icon_name="swap_vert",
+        )
+        self.flip_split_btn.setToolTip("Flip the top and bottom output areas")
+        right_layout.addSpacing(Spacing.SECTION_GAP)
+        right_layout.addWidget(self.flip_split_btn)
+
         # -- Bottom: platform selection + render (fixed height) --
         bottom_widget = QWidget()
         bottom_widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)  # ty: ignore[unresolved-attribute]

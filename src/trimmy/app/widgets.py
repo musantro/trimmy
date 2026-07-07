@@ -26,6 +26,10 @@ from PySide6.QtMultimedia import QAudioBuffer, QAudioFormat
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from trimmy.app.theme import Colors, Typography
+from trimmy.editing.crop.application.flip_output_areas_use_case import (
+    FlipOutputAreasRequest,
+    FlipOutputAreasUseCase,
+)
 from trimmy.editing.crop.application.initialize_crops_use_case import (
     InitializeCropsRequest,
     InitializeCropsUseCase,
@@ -85,6 +89,7 @@ class CropWidget(QWidget):
 
         self._repository = InMemoryCropSelectionRepository()
         self._initialize = InitializeCropsUseCase(self._repository)
+        self._flip_output = FlipOutputAreasUseCase(self._repository)
         self._synchronize = SynchronizeAspectsUseCase(self._repository)
         self._move = MoveCropUseCase(self._repository)
         self._resize = ResizeCropUseCase(self._repository)
@@ -138,6 +143,13 @@ class CropWidget(QWidget):
         )
         self.update()
         self.crops_changed.emit()
+
+    def flip_output_areas(self, split_ratio: float) -> float:
+        """Swap top and bottom crop properties and return the new split ratio."""
+        result = self._flip_output.flip(FlipOutputAreasRequest(split_ratio))
+        self.update()
+        self.crops_changed.emit()
+        return result.split_ratio
 
     # ---- painting ----
 
