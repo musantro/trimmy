@@ -1,3 +1,9 @@
+## v0.12.1 (2026-07-07)
+
+### Refactor
+
+- **app**: remove sidebar menu
+
 ## v0.12.0 (2026-07-06)
 
 ### Feat
