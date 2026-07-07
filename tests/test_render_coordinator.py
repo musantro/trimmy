@@ -131,6 +131,7 @@ def test_start_render_queue_publishes_progress_and_completed():
         first,
         second,
     ]
+    assert [event.item_index for event in progress if event.target_pct == 0] == [0, 1]
     assert progress[-1].global_pct == 100
     assert len(completed) == 1
     assert completed[0].result.parts == 2

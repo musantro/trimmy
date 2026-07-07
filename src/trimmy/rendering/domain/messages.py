@@ -51,6 +51,7 @@ class RenderProgressed(Event):
 class RenderQueueProgressed(Event):
     """Event: queued render progress for one target and the whole queue."""
 
+    item_index: int
     target: RenderTarget
     target_pct: int
     global_pct: int

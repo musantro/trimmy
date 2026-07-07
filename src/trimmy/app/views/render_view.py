@@ -7,6 +7,8 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -31,12 +33,15 @@ class RenderView(QWidget):
 
     cancel_requested = Signal()
     done_requested = Signal()
+    queue_job_selected = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setStyleSheet(f"background: {Colors.SURFACE_DIM};")
 
         self._platform_items: dict[str, RenderProgressItem] = {}
+        self._platform_order: tuple[str, ...] = ()
+        self._queue_job_count = 0
 
         # Outer scroll area
         scroll = QScrollArea(self)
@@ -59,8 +64,8 @@ class RenderView(QWidget):
 
         # Content card
         card = QWidget()
-        card.setMinimumWidth(820)
-        card.setMaximumWidth(1000)
+        card.setMinimumWidth(960)
+        card.setMaximumWidth(1180)
         card.setSizePolicy(
             QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Maximum,
@@ -96,6 +101,30 @@ class RenderView(QWidget):
         left = QVBoxLayout(left_wrapper)
         left.setContentsMargins(0, 0, 0, 0)
         left.setSpacing(Spacing.LG)
+
+        self._queue_section = QWidget()
+        self._queue_section.setStyleSheet("background: transparent;")
+        queue_layout = QVBoxLayout(self._queue_section)
+        queue_layout.setContentsMargins(0, 0, 0, 0)
+        queue_layout.setSpacing(Spacing.SM)
+        queue_layout.addWidget(SectionLabel("QUEUE JOBS"))
+
+        self._queue_list = QListWidget()
+        self._queue_list.setMinimumHeight(160)
+        self._queue_list.setStyleSheet(
+            f"QListWidget {{ background: {Colors.SURFACE_CONTAINER};"
+            f" color: {Colors.ON_SURFACE};"
+            f" border: 1px solid {Colors.OUTLINE_VARIANT};"
+            f" border-radius: {Radii.DEFAULT}px; }}"
+            f"QListWidget::item {{ padding: {Spacing.XS}px; }}"
+            "QListWidget::item:selected {"
+            f" background: {Colors.SURFACE_CONTAINER_HIGHEST};"
+            " }"
+        )
+        self._queue_list.currentRowChanged.connect(self._on_queue_row_changed)
+        queue_layout.addWidget(self._queue_list)
+        self._queue_section.hide()
+        left.addWidget(self._queue_section)
 
         # Global Progress section
         global_section = QVBoxLayout()
@@ -221,6 +250,59 @@ class RenderView(QWidget):
             item.set_progress(percent)
             self._platform_layout.addWidget(item)
             self._platform_items[name] = item
+            self._platform_order = (*self._platform_order, name)
+
+    def set_platform_progress_items(
+        self,
+        items: tuple[tuple[str, int], ...],
+    ) -> None:
+        """Update per-target progress rows, rebuilding only when the row set changes."""
+        labels = tuple(label for label, _percent in items)
+        if labels != self._platform_order:
+            self.clear_platform_info()
+        for label, percent in items:
+            self.set_platform_info(label, percent)
+
+    def clear_platform_info(self) -> None:
+        """Remove all per-target progress rows."""
+        for item in self._platform_items.values():
+            self._platform_layout.removeWidget(item)
+            item.setParent(None)
+            item.deleteLater()
+        self._platform_items.clear()
+        self._platform_order = ()
+
+    def set_queue_jobs(self, labels: tuple[str, ...]) -> None:
+        """Show queued trim jobs in the render screen sidebar."""
+        self._queue_list.blockSignals(True)  # noqa: FBT003
+        self._queue_list.clear()
+        self._queue_job_count = len(labels)
+        for label in labels:
+            self._queue_list.addItem(QListWidgetItem(f"{label}\nQueued"))
+        self._queue_section.setVisible(bool(labels))
+        if labels:
+            self._queue_list.setCurrentRow(0)
+        self._queue_list.blockSignals(False)  # noqa: FBT003
+
+    def set_queue_job_progress(self, index: int, percent: int, detail: str) -> None:
+        """Update one queued trim job row."""
+        if index < 0 or index >= self._queue_list.count():
+            return
+        percent = max(0, min(100, percent))
+        item = self._queue_list.item(index)
+        label = item.text().splitlines()[0]
+        status = "Done" if percent >= 100 else f"{percent}%"
+        if detail:
+            status = f"{status} - {detail}"
+        item.setText(f"{label}\n{status}")
+
+    def select_queue_job(self, index: int) -> None:
+        """Select a queued trim job without re-emitting selection changes."""
+        if index < 0 or index >= self._queue_list.count():
+            return
+        self._queue_list.blockSignals(True)  # noqa: FBT003
+        self._queue_list.setCurrentRow(index)
+        self._queue_list.blockSignals(False)  # noqa: FBT003
 
     def show_done(self) -> None:
         """Switch the cancel button to a 'Done' button after render completes."""
@@ -246,14 +328,17 @@ class RenderView(QWidget):
         self.global_pct_label.set_progress_value(0)
         self.estimate_label.setText("--:-- remaining")
 
-        for item in self._platform_items.values():
-            self._platform_layout.removeWidget(item)
-            item.setParent(None)
-            item.deleteLater()
-        self._platform_items.clear()
+        self.clear_platform_info()
+        self._queue_list.clear()
+        self._queue_job_count = 0
+        self._queue_section.hide()
 
         self.preview.frame = None
         self.preview.update()
+
+    def _on_queue_row_changed(self, row: int) -> None:
+        if 0 <= row < self._queue_job_count:
+            self.queue_job_selected.emit(row)
 
     @staticmethod
     def _remaining_time_text(text: str) -> str:

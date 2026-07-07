@@ -18,7 +18,7 @@ from trimmy.rendering.domain.models import (
 )
 from trimmy.shared.domain.use_case import UseCase
 
-QueueProgressListener = Callable[[RenderTarget, int, int], None]
+QueueProgressListener = Callable[[int, RenderTarget, int, int], None]
 
 
 class RenderQueueUseCase(UseCase[tuple[RenderQueueItem, ...], RenderQueueResult]):
@@ -59,7 +59,7 @@ class RenderQueueUseCase(UseCase[tuple[RenderQueueItem, ...], RenderQueueResult]
                     return
                 target_pct = max(0, min(100, pct))
                 global_pct = int(((_index * 100) + target_pct) / _total)
-                _listener(_target, target_pct, global_pct)
+                _listener(_index, _target, target_pct, global_pct)
 
             listener: ProgressListener | None = progress_cb if on_progress else None
             progress_cb(0)

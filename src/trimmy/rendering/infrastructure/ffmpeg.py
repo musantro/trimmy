@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _BYTES_PER_MB = 1024 * 1024
 _GPU_PROBE_TIMEOUT = 15
+_NO_WINDOW_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 _gpu_encoder_cache: str | None = None
 _gpu_detection_done: bool = False
@@ -51,6 +52,7 @@ def _detect_gpu_encoder() -> str | None:
                 capture_output=True,
                 text=True,
                 timeout=_GPU_PROBE_TIMEOUT,
+                creationflags=_NO_WINDOW_FLAGS,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError):  # noqa: PERF203
             continue
@@ -115,6 +117,7 @@ class FFmpegRenderingBackend(RenderingBackend):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                creationflags=_NO_WINDOW_FLAGS,
             )
 
         if track:
@@ -194,6 +197,7 @@ class FFprobeVideoProber(VideoProber):
             capture_output=True,
             text=True,
             check=False,
+            creationflags=_NO_WINDOW_FLAGS,
         )
         info = json.loads(proc.stdout)
         duration = float(info["format"]["duration"])

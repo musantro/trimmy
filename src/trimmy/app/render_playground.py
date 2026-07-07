@@ -27,9 +27,12 @@ from PySide6.QtWidgets import (
 )
 
 from trimmy.app.components import TopNavBar
+from trimmy.app.main_window import QueuedRenderGroup, QueuedRenderJob, RenderQueueDialog
 from trimmy.app.theme import Colors, Spacing, build_stylesheet, load_fonts
+from trimmy.app.views.editor_view import EditorView
 from trimmy.app.views.render_view import RenderView
-from trimmy.editing.shared.domain.models import CropRect, CropSelection
+from trimmy.editing.shared.domain.models import CropRect, CropSelection, TrimRange
+from trimmy.rendering.domain.models import RenderQueueItem, RenderSpec, RenderTarget
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,80 @@ def _demo_selection() -> CropSelection:
     return CropSelection(
         top=CropRect(x=120, y=68, w=720, h=405),
         bottom=CropRect(x=390, y=210, w=720, h=405),
+    )
+
+
+def _demo_queue_job(
+    index: int,
+    platform: str,
+    format_key: str,
+    *,
+    source_name: str = "2026-06-11 23-46-54.mkv",
+) -> QueuedRenderJob:
+    source = Path(f"E:/musan/Videos/{source_name}")
+    output = (
+        Path("E:/musan/Downloads/Contenedor")
+        / f"{source.stem}_{index}_{platform}_{format_key}_optimized.mp4"
+    )
+    target = RenderTarget(platform, format_key, "optimized")
+    spec = RenderSpec(
+        source_path=source,
+        output_path=output,
+        trim=TrimRange(424.9, 442.0),
+        crops=_demo_selection(),
+        split_ratio=0.53,
+        platform=platform,
+        quality="optimized",
+        source_fps=60.0,
+    )
+    return QueuedRenderJob(
+        item=RenderQueueItem(target, spec, None),
+        source_name=source.name,
+        output_path=output,
+        trim_start=424.9,
+        trim_end=442.0,
+        split_ratio=0.53,
+    )
+
+
+def _demo_queue_groups() -> tuple[QueuedRenderGroup, ...]:
+    return (
+        QueuedRenderGroup(
+            (
+                _demo_queue_job(1, "instagram", "feed"),
+                _demo_queue_job(1, "instagram", "reels"),
+                _demo_queue_job(1, "tiktok", "video"),
+                _demo_queue_job(1, "twitter", "post"),
+            ),
+        ),
+        QueuedRenderGroup(
+            (
+                _demo_queue_job(
+                    2,
+                    "instagram",
+                    "feed",
+                    source_name="2026-06-08 23-52-54.mkv",
+                ),
+                _demo_queue_job(
+                    2,
+                    "instagram",
+                    "reels",
+                    source_name="2026-06-08 23-52-54.mkv",
+                ),
+                _demo_queue_job(
+                    2,
+                    "tiktok",
+                    "video",
+                    source_name="2026-06-08 23-52-54.mkv",
+                ),
+                _demo_queue_job(
+                    2,
+                    "twitter",
+                    "post",
+                    source_name="2026-06-08 23-52-54.mkv",
+                ),
+            ),
+        ),
     )
 
 
@@ -263,6 +340,81 @@ def capture_states(
         paths.append(path)
 
     window.close()
+    return paths
+
+
+def capture_visual_qa(
+    out_dir: Path,
+    *,
+    width: int = 1180,
+    height: int = 820,
+    settle_ms: int = 500,
+) -> list[Path]:
+    """Capture screenshots for the queue-related editor and render surfaces."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    demo_frame = _make_demo_frame()
+    demo_groups = _demo_queue_groups()
+
+    editor = EditorView()
+    editor.resize(width, height)
+    editor.platform_selector.set_targets(
+        (
+            ("instagram", "feed"),
+            ("instagram", "reels"),
+            ("tiktok", "video"),
+            ("twitter", "post"),
+        ),
+    )
+    editor.preview.set_frame(demo_frame)
+    editor.preview.set_selection(_demo_selection())
+    editor.preview.split_ratio = 0.53
+    editor.queue_status.setText("2 JOBS QUEUED")
+    editor.show()
+    _process_events_for(settle_ms)
+    path = out_dir / "editor-queue-controls.png"
+    editor.grab().save(str(path))
+    paths.append(path)
+    editor.close()
+
+    dialog = RenderQueueDialog(demo_groups)
+    dialog.resize(1080, 620)
+    dialog.show()
+    dialog._preview.set_frame(demo_frame)
+    _process_events_for(settle_ms)
+    path = out_dir / "queue-review-dialog.png"
+    dialog.grab().save(str(path))
+    paths.append(path)
+    dialog.close()
+
+    render = RenderView()
+    render.resize(width, height)
+    render.set_queue_jobs(
+        (
+            "Job 1: 2026-06-11 23-46-54.mkv (7:04.9-7:22.0)",
+            "Job 2: 2026-06-08 23-52-54.mkv (7:04.9-7:22.0)",
+        ),
+    )
+    render.set_queue_job_progress(0, 100, "")
+    render.set_queue_job_progress(1, 37, "INSTAGRAM / REELS")
+    render.set_global_progress(68, "00:38 remaining")
+    for label, progress in (
+        ("INSTAGRAM / FEED", 100),
+        ("INSTAGRAM / REELS", 37),
+        ("TIKTOK / VIDEO", 0),
+        ("TWITTER / POST", 0),
+    ):
+        render.set_platform_info(label, progress)
+    render.preview.set_frame(demo_frame)
+    render.preview.set_selection(_demo_selection())
+    render.preview.split_ratio = 0.53
+    render.show()
+    _process_events_for(settle_ms)
+    path = out_dir / "render-queue-screen.png"
+    render.grab().save(str(path))
+    paths.append(path)
+    render.close()
+
     return paths
 
 
@@ -468,6 +620,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         type=Path,
         help="Save progress animation videos and exit.",
     )
+    parser.add_argument(
+        "--visual-qa-dir",
+        type=Path,
+        help="Save screenshots for queue UI visual QA and exit.",
+    )
     parser.add_argument("--animation-fps", type=int, default=30)
     return parser.parse_args(argv)
 
@@ -475,12 +632,17 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     """Run the interactive playground or snapshot exporter."""
     args = _parse_args(list(sys.argv[1:] if argv is None else argv))
-    if args.snapshot_dir is not None or args.animation_dir is not None:
+    if (
+        args.snapshot_dir is not None
+        or args.animation_dir is not None
+        or args.visual_qa_dir is not None
+    ):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     app = cast(QApplication, QApplication.instance() or QApplication(sys.argv))
     app.setStyle("Fusion")
     load_fonts()
+    app.setStyleSheet(build_stylesheet())
 
     state_filter = set(args.state) if args.state else None
     if args.snapshot_dir is not None:
@@ -500,6 +662,16 @@ def main(argv: list[str] | None = None) -> int:
             width=args.width,
             height=args.height,
             fps=args.animation_fps,
+        )
+        for path in paths:
+            sys.stdout.write(f"{path}\n")
+        return 0
+
+    if args.visual_qa_dir is not None:
+        paths = capture_visual_qa(
+            args.visual_qa_dir,
+            width=args.width,
+            height=args.height,
         )
         for path in paths:
             sys.stdout.write(f"{path}\n")
