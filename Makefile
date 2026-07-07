@@ -9,7 +9,7 @@ render-snapshots:
 
 install:
 	uv sync --group dev
-	uv run prek install --hook-type commit-msg
+	uv run prek install --hook-type pre-commit --hook-type commit-msg
 
 check:
 	uv run ruff check .
