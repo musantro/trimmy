@@ -1,0 +1,44 @@
+site_name: Trimmy
+site_description: Vertical split-crop video editor for social video.
+site_url: https://musantro.github.io/trimmy/
+repo_url: https://github.com/musantro/trimmy
+repo_name: musantro/trimmy
+
+theme:
+  name: material
+  logo: assets/screenshots/render-complete.png
+  favicon: assets/screenshots/render-complete.png
+  palette:
+    - scheme: slate
+      primary: lime
+      accent: cyan
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.tabs.link
+
+nav:
+  - Trimmy: index.md
+  - Install: installation.md
+  - Tutorial: tutorial.md
+  - CLI: cli.md
+  - Rendering: rendering.md
+  - Shortcuts: keyboard-shortcuts.md
+  - Publish: publishing.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - stylesheets/extra.css

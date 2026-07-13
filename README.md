@@ -80,6 +80,15 @@ uv run python -m trimmy
 See [CHANGELOG.md](https://github.com/musantro/trimmy/blob/master/CHANGELOG.md)
 for release history.
 
+## Documentation
+
+The documentation site lives in [docs](docs) and is configured with
+[MkDocs Material](https://squidfunk.github.io/mkdocs-material/):
+
+```bash
+uv run --group docs mkdocs serve
+```
+
 ## License
 
 [MIT](https://github.com/musantro/trimmy/blob/master/README.md)
