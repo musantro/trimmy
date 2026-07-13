@@ -2,11 +2,12 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "^startup$",
+        "matcher": "^(startup|resume)$",
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$(git rev-parse --show-toplevel)/.codex/hooks/session-start.ps1\"",
+            "command": "bash -lc 'repo_root=\"$(git rev-parse --show-toplevel)\" && \"$repo_root/.codex/hooks/session-start.sh\"'",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& ([System.IO.Path]::Combine((& git rev-parse --show-toplevel).Trim(), '.codex/hooks/session-start.ps1'))\"",
             "statusMessage": "Ensuring pre-commit hooks are installed"
           }
         ]
