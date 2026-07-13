@@ -1,0 +1,169 @@
+# CLI Reference
+
+Trimmy has one command: `trimmy`.
+
+With no subcommand, it launches the desktop editor. When the app is already
+running, the same command can send control commands to it.
+
+## `trimmy`
+
+Launch the app:
+
+```bash
+trimmy
+```
+
+This opens the start screen. From there, drag and drop a video or choose one
+with the open control.
+
+## `trimmy PATH`
+
+Launch Trimmy and open a video immediately:
+
+```bash
+trimmy "E:\musan\Videos\2026-06-08 23-52-54.mkv"
+```
+
+Relative paths work too:
+
+```bash
+trimmy ./videos/demo.mp4
+```
+
+Paths with spaces should be quoted:
+
+```bash
+trimmy "C:\Users\me\Videos\screen recording.mkv"
+```
+
+## `uvx trimmy`
+
+Run Trimmy without installing it into the current environment:
+
+```bash
+uvx trimmy
+```
+
+Open a file directly:
+
+```bash
+uvx trimmy ./videos/demo.mp4
+```
+
+## Control the running app
+
+Launch the app first:
+
+```bash
+trimmy "E:\musan\Videos\2026-06-08 23-52-54.mkv"
+```
+
+Then send commands from another terminal.
+
+Check that the app is reachable:
+
+```bash
+trimmy ping
+```
+
+Inspect the current state:
+
+```bash
+trimmy state
+```
+
+Open a different file:
+
+```bash
+trimmy file open ./videos/demo.mp4
+```
+
+Set the trim bounds:
+
+```bash
+trimmy trim set --start 424.9 --end 442.0
+```
+
+Or use the current playhead:
+
+```bash
+trimmy trim set --start playhead
+trimmy trim set --end playhead
+```
+
+Set crop rectangles:
+
+```bash
+trimmy crop set --position top --x 120 --y 68 --w 720 --h 405
+trimmy crop set --position bottom --x 390 --y 210 --w 720 --h 405
+```
+
+Set the split and targets:
+
+```bash
+trimmy split set --ratio 0.53
+trimmy targets set instagram:reels tiktok:video
+trimmy quality set --value optimized
+```
+
+Take screenshots:
+
+```bash
+trimmy screenshot --target window --output docs/assets/screenshots/window.png
+trimmy screenshot --target preview --output docs/assets/screenshots/preview.png
+```
+
+Build and render a queue:
+
+```bash
+trimmy queue add --output-dir ./exports
+trimmy queue list
+trimmy queue render
+```
+
+Render immediately:
+
+```bash
+trimmy render start --output ./exports/demo_tiktok.mp4
+trimmy render status
+```
+
+Stop a render:
+
+```bash
+trimmy render stop
+```
+
+Return JSON for automation:
+
+```bash
+trimmy state --json
+```
+
+## Exit codes
+
+Trimmy exits with an error before opening the UI if `ffmpeg` or `ffprobe` cannot be found.
+
+```bash
+ffmpeg -version
+ffprobe -version
+```
+
+If those commands work in the same terminal, Trimmy can find the encoder tools.
+
+## Command groups
+
+| Group | Examples |
+| --- | --- |
+| Session | `ping`, `state`, `screenshot`, `close` |
+| Dialogs | `dialog state`, `dialog close`, `dialog help open` |
+| Files | `file open PATH` |
+| Playback | `playback set`, `playback seek`, `playback volume`, `playback mute` |
+| Editing | `trim set`, `crop set`, `split set`, `split flip` |
+| Output | `targets list`, `targets set`, `quality set` |
+| Queue | `queue add`, `queue list`, `queue remove`, `queue edit`, `queue render` |
+| Render | `render start`, `render stop`, `render status` |
+
+!!! note
+    `trimmy --help` is not a generated help screen yet. Unknown options are
+    rejected, and command examples are documented on this page.

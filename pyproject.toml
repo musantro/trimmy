@@ -49,6 +49,9 @@ dev = [
     "pytest>=8.0",
     "pytest-cov",
 ]
+docs = [
+    "mkdocs-material>=9.6",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
