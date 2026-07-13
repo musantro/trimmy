@@ -7,7 +7,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from typer.testing import CliRunner
 
+import trimmy.__main__ as cli_module
 from trimmy.control.application import parser as parser_module
 from trimmy.control.application.dispatcher import COMMANDS, dispatch
 from trimmy.control.application.formatter import human_text, json_text
@@ -292,6 +294,30 @@ def test_parser_builds_launch_and_app_process_instructions():
     assert parse_argv(["--app-process", "movie.mp4"]) == AppProcessInstruction(
         path=Path("movie.mp4")
     )
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (["--help"], "Launch Trimmy"),
+        (["trim", "--help"], "Set trim bounds"),
+        (["trim", "set", "--help"], "--start"),
+        (["queue", "add", "--help"], "--output-dir"),
+    ],
+)
+def test_typer_help_is_available_for_cli_commands(monkeypatch, args, expected):
+    for name in dir(cli_module):
+        if name.endswith("_cli"):
+            monkeypatch.setattr(getattr(cli_module, name), "rich_markup_mode", None)
+    result = CliRunner().invoke(
+        cli_module._help_cli,
+        args,
+        color=False,
+        prog_name="trimmy",
+    )
+
+    assert result.exit_code == 0
+    assert expected in result.output
 
 
 @pytest.mark.parametrize(
