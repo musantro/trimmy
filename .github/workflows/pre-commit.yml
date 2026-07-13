@@ -1,9 +1,8 @@
 name: Pre-commit
 
-# Runs the project's prek (pre-commit) hooks in CI, so a contributor who
-# bypasses the local hook can't slip unformatted or unlinted code past review.
-# The commitizen hook is scoped to the commit-msg stage and is therefore
-# skipped by `prek run --all-files`.
+# Runs the project's prek hooks in CI, so a contributor who bypasses the
+# local hooks can't slip unformatted, unlinted, or invalid commit messages
+# past review.
 
 on:
   pull_request:
@@ -22,6 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
@@ -29,3 +29,5 @@ jobs:
       - run: uv sync --locked
       - name: Run prek hooks
         run: uv run prek run --all-files --show-diff-on-failure
+      - name: Check commit messages
+        run: uv run cz check --rev-range "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
