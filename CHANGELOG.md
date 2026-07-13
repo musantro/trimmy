@@ -1,3 +1,9 @@
+## v0.15.0 (2026-07-13)
+
+### Feat
+
+- add always-on CLI control
+
 ## v0.14.0 (2026-07-07)
 
 ### Feat
