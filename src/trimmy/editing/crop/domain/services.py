@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trimmy.editing.shared.domain.models import (
+from trimmy.editing.crop.domain.models import (
     CropHandle,
     CropRect,
     CropSelection,

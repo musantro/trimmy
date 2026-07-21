@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from trimmy.editing.shared.domain.models import TrimRange
 from trimmy.editing.trim.application.set_trim_end_use_case import (
     SetTrimEndRequest,
     SetTrimEndUseCase,
@@ -15,6 +14,7 @@ from trimmy.editing.trim.application.set_trim_start_use_case import (
     SetTrimStartRequest,
     SetTrimStartUseCase,
 )
+from trimmy.editing.trim.domain.models import TrimRange
 from trimmy.editing.trim.domain.specifications import ValidTrimRangeSpecification
 from trimmy.rendering.application.plan_segments_use_case import (
     PlanSegmentsRequest,

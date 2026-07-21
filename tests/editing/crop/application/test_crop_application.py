@@ -23,11 +23,11 @@ from trimmy.editing.crop.application.synchronize_aspects_use_case import (
     SynchronizeAspectsRequest,
     SynchronizeAspectsUseCase,
 )
+from trimmy.editing.crop.domain.models import CropHandle, CropPosition, CropSelection
 from trimmy.editing.crop.domain.services import CropAspects
 from trimmy.editing.crop.infrastructure.in_memory_crop_selection_repository import (
     InMemoryCropSelectionRepository,
 )
-from trimmy.editing.shared.domain.models import CropHandle, CropPosition, CropSelection
 
 
 def test_initialize_crops_use_case():

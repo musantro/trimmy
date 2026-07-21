@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from trimmy.editing.shared.domain.models import TrimRange
+from trimmy.editing.trim.domain import TrimRange
 from trimmy.rendering.domain.models import EncoderPreset
 from trimmy.shared.compat import override
 from trimmy.shared.domain.specification import Specification

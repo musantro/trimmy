@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from trimmy.editing.crop.domain.crop_selection_repository import CropSelectionRepository
-from trimmy.editing.shared.domain.models import CropRect, CropSelection
+from trimmy.editing.crop.domain.models import CropRect, CropSelection
 from trimmy.shared.compat import override
 
 _EMPTY_SELECTION = CropSelection(top=CropRect(), bottom=CropRect())

@@ -5,7 +5,8 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
-from trimmy.editing.shared.domain.models import CropSelection, TrimRange
+from trimmy.editing.crop.domain import CropSelection
+from trimmy.editing.trim.domain import TrimRange
 from trimmy.rendering.domain.models import (
     BitratePlan,
     DimensionPlan,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from trimmy.editing.shared.domain.models import CropRect, SourceSize
+from trimmy.editing.crop.domain.models import CropRect, SourceSize
 from trimmy.shared.compat import override
 from trimmy.shared.domain.specification import Specification
 

@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from tests.mothers import make_spec
-from trimmy.editing.shared.domain.models import TrimRange
+from trimmy.editing.trim.domain.models import TrimRange
 from trimmy.rendering.application.probe_video_use_case import (
     ProbeVideoRequest,
     ProbeVideoUseCase,

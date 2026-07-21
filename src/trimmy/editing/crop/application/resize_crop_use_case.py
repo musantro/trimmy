@@ -5,14 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from trimmy.editing.crop.domain.crop_selection_repository import CropSelectionRepository
-from trimmy.editing.crop.domain.services import CropResizer
-from trimmy.editing.shared.domain.models import (
+from trimmy.editing.crop.domain.models import (
     CropHandle,
     CropPosition,
     CropRect,
     CropSelection,
     SourceSize,
 )
+from trimmy.editing.crop.domain.services import CropResizer
 from trimmy.shared.domain.use_case import UseCase
 
 

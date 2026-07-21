@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from trimmy.editing.crop.domain.crop_selection_repository import CropSelectionRepository
-from trimmy.editing.shared.domain.models import CropSelection
+from trimmy.editing.crop.domain.models import CropSelection
 from trimmy.shared.domain.use_case import UseCase
 
 
