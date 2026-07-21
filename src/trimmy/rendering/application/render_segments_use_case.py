@@ -65,7 +65,7 @@ class RenderSegmentsUseCase(UseCase[RenderJobRequest, RenderJobResult]):
                 base_pct = int((segment.index - 1) / segment.total * 100)
                 listener(base_pct)
 
-                def seg_cb(  # noqa: E301
+                def seg_cb(
                     ffmpeg_pct: int,
                     _base: int = base_pct,
                     _total: int = segment.total,

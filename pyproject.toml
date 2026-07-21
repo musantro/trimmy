@@ -125,6 +125,7 @@ select = [
   "ERA",
   "T20",
   "RET",
+  "RUF100",
   "PTH",
   "FLY",
   "PERF",

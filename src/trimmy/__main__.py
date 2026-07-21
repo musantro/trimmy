@@ -42,7 +42,7 @@ _render_cli = typer.Typer(add_completion=False, help="Control rendering.")
 @_help_cli.callback()
 def _root_help(
     *,
-    json: Annotated[  # noqa: A002
+    json: Annotated[
         bool,
         typer.Option("--json", help="Print command responses as JSON."),
     ] = False,
@@ -283,18 +283,18 @@ def main() -> None:
     try:
         instruction = parse_argv(sys.argv[1:])
         if isinstance(instruction, AppProcessInstruction):
-            from trimmy.apps.desktop.bootstrap import run  # noqa: PLC0415
+            from trimmy.apps.desktop.bootstrap import run
 
             run(str(instruction.path) if instruction.path is not None else None)
             return
         if isinstance(instruction, LaunchInstruction):
-            from trimmy.apps.cli.control_client import launch_app  # noqa: PLC0415
+            from trimmy.apps.cli.control_client import launch_app
 
             response = launch_app(instruction.path)
             _print_response(response, as_json=instruction.json)
             raise SystemExit(0)
         if isinstance(instruction, SendInstruction):
-            from trimmy.apps.cli.control_client import send_request  # noqa: PLC0415
+            from trimmy.apps.cli.control_client import send_request
 
             response = send_request(instruction.request)
             _print_response(response, as_json=instruction.json)
