@@ -1,86 +1,85 @@
-# Visión de Trimmy
+# Trimmy Vision
 
-Trimmy es un editor de vídeo de escritorio centrado en transformar un vídeo
-horizontal en una composición vertical de dos zonas, preparada para publicar
-en redes sociales. Debe ofrecer un flujo local, rápido y comprensible: abrir
-un vídeo, definir los recortes y el tramo temporal, elegir un destino y dejar
-que FFmpeg produzca el archivo final.
+Trimmy is a desktop video editor focused on turning a horizontal video into a
+two-area vertical composition ready for publishing on social platforms. It must
+provide a local, fast, and understandable workflow: open a video, define the
+crops and timeline range, choose a target, and let FFmpeg produce the final
+file.
 
-La aplicación no es un cliente web disfrazado ni un conjunto de servicios
-remotos. Es un producto desktop: PySide6 ofrece la experiencia interactiva y
-FFmpeg/FFprobe realizan el trabajo multimedia local. Esa elección no reduce
-la necesidad de límites arquitectónicos; hace todavía más importante separar
-la interfaz de usuario, los casos de uso y las integraciones con el sistema.
+The application is neither a web client in disguise nor a collection of remote
+services. It is a desktop product: PySide6 provides the interactive experience
+and FFmpeg/FFprobe perform local multimedia work. That decision does not reduce
+the need for architectural boundaries; it makes the separation of the user
+interface, use cases, and system integrations even more important.
 
-## Objetivos de producto
+## Product Goals
 
-- Hacer fácil crear clips verticales de calidad a partir de una fuente de
-  vídeo local.
-- Mantener el control del usuario sobre recortes, proporción de la
-  composición, tramo temporal, plataforma, formato y calidad.
-- Exportar resultados predecibles mediante presets explícitos y un backend de
-  render sustituible.
-- Ser utilizable como aplicación gráfica y automatizable desde sus puntos de
-  entrada de control, sin duplicar reglas de negocio.
-- Funcionar de forma local y portable en las plataformas de escritorio
-  soportadas por Python y PySide6.
+- Make it easy to create high-quality vertical clips from a local video source.
+- Keep users in control of crops, composition ratio, timeline range, platform,
+  format, and quality.
+- Export predictable results through explicit presets and a replaceable
+  rendering backend.
+- Be usable as a graphical application and automatable through control entry
+  points without duplicating business rules.
+- Run locally and portably on desktop platforms supported by Python and
+  PySide6.
 
-## Modelo arquitectónico
+## Architecture Model
 
-Trimmy adopta arquitectura hexagonal y modular. La unidad que protege la
-arquitectura es el **módulo vertical**, no una capa técnica global. Cada módulo
-de negocio tiene exactamente estas capas:
+Trimmy follows a modular hexagonal architecture. The unit protected by the
+architecture is the **vertical module**, not a global technical layer. Every
+business module has exactly these layers:
 
 ```text
-<área>/<módulo>/
+<area>/<module>/
   domain/
   application/
   infrastructure/
 ```
 
-Los módulos se agrupan directamente bajo áreas de negocio, sin un paquete
-intermedio `contexts/`. Por ejemplo, `editing/crop` y `editing/trim` son
-módulos distintos dentro del área de edición. Un módulo que no necesita un
-segundo nivel, como `rendering` o `preferences`, usa las mismas tres capas en
-su propia raíz.
+Modules are grouped directly under business areas, without an intermediate
+`contexts/` package. For example, `editing/crop` and `editing/trim` are
+distinct modules inside the editing area. A module that does not need a second
+level, such as `rendering` or `preferences`, uses the same three layers at its
+own root.
 
-Esta disposición conserva la lectura vertical inspirada en CodelyTV —primero
-la capacidad de negocio y después sus capas— y evita una carpeta genérica que
-oculte el lenguaje del producto.
+This layout retains the CodelyTV-inspired vertical reading order—business
+capability first, its layers second—and avoids a generic folder that hides the
+product language.
 
 ### Domain
 
-`domain` contiene el lenguaje ubicuo y las reglas que deben seguir siendo
-válidas con independencia de PySide6, FFmpeg, JSON, CLI o filesystem:
+`domain` holds the ubiquitous language and rules that must remain valid
+independently of PySide6, FFmpeg, JSON, CLI, or the filesystem:
 
-- entidades, agregados, value objects y especificaciones;
-- servicios puros de dominio;
-- eventos de dominio;
-- puertos para repositorios, gateways y buses de eventos cuando el dominio
-  necesita colaborar con el exterior.
+- entities, aggregates, value objects, and specifications;
+- pure domain services;
+- domain events; and
+- ports for repositories, gateways, and event buses when the domain needs to
+  collaborate with the outside world.
 
-El dominio no conoce frameworks, la interfaz gráfica ni implementaciones de
-adaptadores. Los valores con reglas o significado propio deben representarse
-con tipos explícitos, en lugar de propagar primitivos ambiguos.
+The domain does not know frameworks, the graphical interface, or adapter
+implementations. Values with their own rules or meaning must use explicit
+types instead of ambiguous primitives.
 
 ### Application
 
-`application` expresa las intenciones del usuario y coordina el dominio.
-Sus casos de uso reciben puertos por inyección de dependencias, aplican el
-flujo necesario y devuelven resultados adecuados para adaptadores. No crean
-backends concretos, repositorios, clientes de sistema ni widgets.
+`application` expresses user intent and coordinates the domain. Its use cases
+receive ports through dependency injection, apply the required workflow, and
+return results suitable for adapters. They do not create concrete backends,
+repositories, system clients, or widgets.
 
 ### Infrastructure
 
-`infrastructure` implementa los puertos y aísla las dependencias externas:
-FFmpeg, FFprobe, archivos JSON, almacenamiento en memoria, buses adaptados al
-event loop y otras integraciones técnicas. Las implementaciones pueden
-cambiar sin que el dominio ni los casos de uso cambien por ello.
+`infrastructure` implements ports and isolates external dependencies: FFmpeg,
+FFprobe, JSON files, in-memory storage, event-loop-aware buses, and other
+technical integrations. Implementations can change without changing the
+domain or its use cases.
 
-## Aplicaciones de entrada
+## Entry Applications
 
-La UI desktop no es un bounded context de negocio. Es una aplicación que
-compone y consume los módulos:
+The desktop UI is not a business bounded context. It is an application that
+composes and consumes the modules:
 
 ```text
 apps/desktop/
@@ -92,74 +91,71 @@ apps/desktop/
   presenters/
 ```
 
-La aplicación desktop puede llamar casos de uso en el mismo proceso; no es
-necesario introducir HTTP ni un backend artificial para conservar los límites
-hexagonales. La CLI y el control local son otros adaptadores de entrada y
-deben invocar la misma frontera de aplicación, no manipular widgets ni estado
-privado de la ventana.
+The desktop application can call use cases in-process; HTTP or an artificial
+backend are not necessary to preserve hexagonal boundaries. The CLI and local
+control are other input adapters and must invoke the same application
+boundary, rather than manipulating widgets or private window state.
 
-`bootstrap.py` es el composition root. Es el único lugar de una aplicación
-donde se decide qué adaptador concreto satisface cada puerto y donde se crean
-repositorios, gateways, buses y casos de uso. Widgets, vistas, workers y
-controladores reciben sus dependencias; no las construyen.
+`bootstrap.py` is the composition root. It is the only place in an application
+where the concrete adapter for each port is selected and repositories,
+gateways, buses, and use cases are created. Widgets, views, workers, and
+controllers receive their dependencies rather than constructing them.
 
-## Reglas de dependencia
+## Dependency Rules
 
-- `domain` no depende de `application`, `infrastructure` ni `apps`.
-- `application` depende de `domain` y de sus puertos, nunca de
-  implementaciones de infraestructura.
-- `infrastructure` puede depender de `domain` y `application` para adaptar
-  puertos, pero no de `apps`.
-- Las aplicaciones pueden depender de los módulos de negocio; los módulos de
-  negocio nunca dependen de las aplicaciones.
-- Los módulos hermanos no importan detalles internos entre sí. La colaboración
-  se realiza por contratos publicados, eventos o una frontera de aplicación
-  explícita.
-- `shared` sólo contiene conceptos realmente transversales y no puede
-  depender de los módulos de producto.
+- `domain` does not depend on `application`, `infrastructure`, or `apps`.
+- `application` depends on `domain` and its ports, never on infrastructure
+  implementations.
+- `infrastructure` can depend on `domain` and `application` to adapt ports,
+  but not on `apps`.
+- Applications can depend on business modules; business modules never depend
+  on applications.
+- Sibling modules do not import each other's internal details. Collaboration
+  occurs through published contracts, events, or an explicit application
+  boundary.
+- `shared` contains only genuinely cross-cutting concepts and cannot depend on
+  product modules.
 
-## Fuente de verdad y consistencia
+## Source of Truth and Consistency
 
-El estado de negocio no debe residir en widgets. La interfaz mantiene sólo
-estado de presentación efímero —foco, selección visual, geometría de la
-ventana o animaciones—. El estado que define una edición, un recorte, un tramo
-temporal, una preferencia o un render pertenece al dominio o a una frontera de
-aplicación explícita y se modifica mediante casos de uso.
+Business state must not live in widgets. The interface holds only ephemeral
+presentation state—focus, visual selection, window geometry, or animations.
+The state that defines an edit, crop, timeline range, preference, or render
+belongs to the domain or an explicit application boundary and changes through
+use cases.
 
-Las preferencias globales de usuario se distinguen del estado de una edición.
-Los repositorios persisten agregados o configuraciones con identidad clara; no
-se usan para esconder estado mutable de un widget.
+Global user preferences are distinct from the state of an edit. Repositories
+persist aggregates or configurations with a clear identity; they are not used
+to hide mutable widget state.
 
-## Criterios de diseño
+## Design Criteria
 
-Al tomar decisiones de diseño, Trimmy prioriza:
+When making design decisions, Trimmy prioritizes:
 
-1. **Claridad del lenguaje de negocio.** Los nombres representan conceptos de
-   edición y render, no detalles accidentales de la UI o de FFmpeg.
-2. **Dependencias hacia dentro.** La lógica central debe poder probarse sin
-   arrancar Qt, FFmpeg ni el sistema de archivos.
-3. **Módulos pequeños y explícitos.** Se crea un módulo cuando tiene lenguaje,
-   reglas o ciclo de cambio propios; no se crean paquetes genéricos como
-   `utils`, `common` o `helpers`.
-4. **Adaptadores sustituibles.** FFmpeg, FFprobe, persistencia y mensajería se
-   expresan mediante puertos y se conectan en el composition root.
-5. **DI explícita.** Se prefiere inyección manual por constructor a estado
-   global, service locators o wiring repartido por la UI.
-6. **Pragmatismo desktop.** No se fuerza una separación de procesos cuando una
-   frontera de paquetes, contratos y dependencias en proceso es suficiente.
-7. **Evolución segura.** Las decisiones arquitectónicas importantes se
-   codifican como standards ejecutables, no sólo como documentación.
+1. **Clear business language.** Names represent editing and rendering concepts,
+   not accidental UI or FFmpeg details.
+2. **Inward dependencies.** Core logic must be testable without starting Qt,
+   FFmpeg, or the filesystem.
+3. **Small, explicit modules.** A module is created when it has its own
+   language, rules, or change cycle; generic packages such as `utils`,
+   `common`, or `helpers` are avoided.
+4. **Replaceable adapters.** FFmpeg, FFprobe, persistence, and messaging are
+   represented through ports and connected in the composition root.
+5. **Explicit DI.** Constructor injection is preferred over global state,
+   service locators, or UI-distributed wiring.
+6. **Desktop pragmatism.** Process separation is not forced when in-process
+   package, contract, and dependency boundaries are sufficient.
+7. **Safe evolution.** Important architecture decisions are encoded as
+   executable standards, not documentation alone.
 
-## Verificación continua
+## Continuous Verification
 
-Los tests de standards son parte del producto arquitectónico. Deben comprobar
-la estructura de módulos y capas, las direcciones de importación, el
-aislamiento de frameworks del dominio, la independencia entre módulos
-hermanos, la dependencia unidireccional entre `apps` y el core, y la
-centralización de la composición en los bootstraps.
+Standards tests are part of the architectural product. They verify module and
+layer structure, import direction, framework isolation from the domain,
+independence between sibling modules, the one-way dependency from `apps` to
+the core, and composition centralization in bootstraps.
 
-La calidad se completa con formato, lint, chequeo estático de tipos, pruebas
-unitarias con cobertura estricta del core y una comprobación de que el paquete
-redistribuible se construye e instala correctamente. El objetivo no es sumar
-ceremonia: es impedir que una futura mejora funcional erosione los límites que
-permiten mantener Trimmy.
+Quality is completed by formatting, linting, static type checking, unit tests
+with strict core coverage, and a check that the distributable package builds
+and installs correctly. The goal is not ceremony: it is to prevent a future
+feature from eroding the boundaries that keep Trimmy maintainable.
