@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 from tests.mothers import make_crop, make_source
+from trimmy.editing.crop.domain.models import (
+    CropHandle,
+    CropPosition,
+    CropRect,
+    CropSelection,
+    SourceSize,
+)
 from trimmy.editing.crop.domain.services import (
     AspectRatioCalculator,
     AspectRatioSynchronizer,
@@ -14,13 +21,6 @@ from trimmy.editing.crop.domain.specifications import (
     NonEmptyCropSpecification,
     WithinSourceBoundsSpecification,
     usable_crop_specification,
-)
-from trimmy.editing.shared.domain.models import (
-    CropHandle,
-    CropPosition,
-    CropRect,
-    CropSelection,
-    SourceSize,
 )
 
 # ---- models ----

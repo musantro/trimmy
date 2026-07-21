@@ -88,12 +88,13 @@ addopts = "--cov=src/trimmy --cov-report=term-missing --cov-fail-under=100"
 
 [tool.coverage.run]
 # Coverage is enforced only on the domain and application layers of every
-# bounded context. The infrastructure layers and the PySide6 ``app``
-# composition root (which owns the UI and session persistence) are omitted
-# by configuration, so the 100% gate measures business logic exclusively.
+# bounded context. The infrastructure layers and the PySide6 desktop
+# application composition root (which owns the UI and session persistence) are
+# omitted by configuration, so the 100% gate measures business logic
+# exclusively.
 omit = [
     "src/trimmy/__main__.py",
-    "src/trimmy/app/**",
+    "src/trimmy/apps/**",
     "src/trimmy/**/infrastructure/*",
 ]
 
@@ -147,8 +148,8 @@ ignore = ["D107", "D203", "D212", "D415", "B008"]
   "S106",
   "D",
 ]
-"src/trimmy/app/control_adapter.py" = ["D102"]
-"src/trimmy/control/domain/models.py" = ["D102"]
+"src/trimmy/apps/desktop/control_adapter.py" = ["D102"]
+"src/trimmy/apps/cli/domain/models.py" = ["D102"]
 
 [tool.ty.environment]
 python-version = "3.10"

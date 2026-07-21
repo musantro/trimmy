@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests.mothers import make_crop, make_preset, make_selection, make_spec
-from trimmy.editing.shared.domain.models import TrimRange
+from trimmy.editing.trim.domain.models import TrimRange
 from trimmy.rendering.domain.models import (
     BitratePlan,
     DimensionPlan,

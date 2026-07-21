@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from trimmy.editing.shared.domain.models import CropSelection, TrimRange
+from trimmy.editing.crop.domain import CropSelection
+from trimmy.editing.trim.domain import TrimRange
 from trimmy.shared.domain.aggregate_root import AggregateRoot
 
 CANCELLED_MESSAGE = "Cancelled"

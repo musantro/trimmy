@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trimmy.editing.shared.domain.models import TrimRange
+from trimmy.editing.trim.domain import TrimRange
 from trimmy.rendering.domain.models import Segment
 from trimmy.rendering.domain.services import SegmentPlanner
 from trimmy.shared.domain.use_case import UseCase

@@ -10,12 +10,12 @@ import pytest
 from typer.testing import CliRunner
 
 import trimmy.__main__ as cli_module
-from trimmy.control.application import parser as parser_module
-from trimmy.control.application.dispatcher import COMMANDS, dispatch
-from trimmy.control.application.formatter import human_text, json_text
-from trimmy.control.application.parser import parse_argv, parse_request_payload
-from trimmy.control.application.service import handle_request
-from trimmy.control.domain.models import (
+from trimmy.apps.cli.application import parser as parser_module
+from trimmy.apps.cli.application.dispatcher import COMMANDS, dispatch
+from trimmy.apps.cli.application.formatter import human_text, json_text
+from trimmy.apps.cli.application.parser import parse_argv, parse_request_payload
+from trimmy.apps.cli.application.service import handle_request
+from trimmy.apps.cli.domain.models import (
     AppProcessInstruction,
     CommandArgs,
     ControlError,

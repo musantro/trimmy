@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from trimmy.editing.shared.domain.models import TrimRange
+from trimmy.editing.trim.domain import TrimRange
 from trimmy.rendering.application.render_video_use_case import RenderVideoUseCase
 from trimmy.rendering.domain.gateways import RenderingBackend
 from trimmy.rendering.domain.models import RenderJobResult, RenderOutcome, RenderSpec

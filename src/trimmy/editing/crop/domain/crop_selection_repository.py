@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from trimmy.editing.shared.domain.models import CropSelection
+from trimmy.editing.crop.domain.models import CropSelection
 
 
 class CropSelectionRepository(ABC):
