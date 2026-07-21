@@ -1,6 +1,6 @@
 [project]
 name = "trimmy"
-version = "0.16.0"
+version = "0.16.1"
 description = "Desktop video editor for cropping horizontal videos into vertical split-screen clips for TikTok, Reels, Shorts, and social media."
 readme = "README.md"
 license = "MIT"

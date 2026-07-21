@@ -1,3 +1,10 @@
+## v0.16.1 (2026-07-21)
+
+### Refactor
+
+- enforce modular hexagonal architecture
+- enforce modular hexagonal architecture
+
 ## v0.16.0 (2026-07-13)
 
 ### Feat
