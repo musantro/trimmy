@@ -26,7 +26,7 @@ _gpu_detection_done: bool = False
 
 def _detect_gpu_encoder() -> str | None:
     """Probe for a hardware H.264 encoder and cache the result."""
-    global _gpu_encoder_cache, _gpu_detection_done  # noqa: PLW0603
+    global _gpu_encoder_cache, _gpu_detection_done
     if _gpu_detection_done:
         return _gpu_encoder_cache
     _gpu_detection_done = True

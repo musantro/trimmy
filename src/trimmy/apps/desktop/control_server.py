@@ -40,7 +40,7 @@ class ControlServer:
                 data.get("request_id", ""),
             )
             response = handle_request(request, self._adapter).to_json()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             response = {
                 "ok": False,
                 "error": {

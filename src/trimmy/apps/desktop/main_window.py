@@ -492,7 +492,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1100, 750)
         self.setStyleSheet(build_stylesheet())
 
-        self.setAcceptDrops(True)  # noqa: FBT003
+        self.setAcceptDrops(True)
 
         self._presets = dependencies.presets
         self._format_selector = dependencies.format_selector
@@ -681,7 +681,7 @@ class MainWindow(QMainWindow):
 
         try:
             info = self._probe.probe(ProbeVideoRequest(path))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             QMessageBox.warning(
                 self,
                 "Error",
