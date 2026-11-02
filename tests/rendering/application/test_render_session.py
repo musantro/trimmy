@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QApplication, QDialog
 
 from tests.mothers import make_spec
 from trimmy.apps.cli.domain.models import ControlError
@@ -15,6 +15,7 @@ from trimmy.apps.desktop.main_window import (
     QueuedRenderGroup,
     QueuedRenderJob,
 )
+from trimmy.apps.desktop.views.render_view import RenderView
 from trimmy.rendering.application.prepare_render_jobs import PrepareRenderJobs
 from trimmy.rendering.application.session import RenderSession, RenderSessionStarted
 from trimmy.rendering.domain.messages import (
@@ -431,3 +432,27 @@ def test_empty_saved_queue_is_rejected_without_reserving_a_session():
     with pytest.raises(ControlError, match="queue is empty"):
         MainWindowControlAdapter(window).queue_render()
     assert session.state.status == "idle"
+
+
+@pytest.mark.parametrize("signal_name", ["itemClicked", "itemActivated"])
+def test_selecting_current_queue_row_pins_preview(signal_name, monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    app = QApplication.instance() or QApplication([])
+    view = RenderView()
+    bus = InMemoryEventBus()
+    session = RenderSession(bus)
+    window = queue_window(bus, session)
+    window._render_view = view
+    window._target_label.side_effect = MainWindow._target_label
+    view.queue_job_selected.connect(window.select_render_group)
+    window.start_saved_queue()
+    assert view._queue_list.currentRow() == 0
+    getattr(view._queue_list, signal_name).emit(view._queue_list.item(0))
+    assert window._preview_group_pinned
+    bus.publish(RenderQueueProgressed(2, queued_groups()[1][0].target, 50, 83))
+    assert window._active_preview_group_index == 0
+    assert view._queue_list.currentRow() == 0
+    window._start_render_preview_for_job.assert_called_once()
+    view.close()
+    view.deleteLater()
+    app.processEvents()

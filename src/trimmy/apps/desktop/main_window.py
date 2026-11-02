@@ -1381,7 +1381,7 @@ class MainWindow(QMainWindow):
         if not 0 <= group_index < len(self._active_render_groups):
             return
         self._preview_group_pinned = True
-        self._show_render_queue_group(group_index, force=True)
+        self._show_render_queue_group(group_index)
 
     def _show_render_queue_group(
         self, group_index: int, *, force: bool = False
