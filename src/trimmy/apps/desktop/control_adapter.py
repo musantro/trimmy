@@ -348,30 +348,17 @@ class MainWindowControlAdapter:
             self._window._source_path,
             targets,
             output_paths,
+            avoid_collisions=False,
         )
 
     def _find_queue_group(self, jobs: tuple[QueuedRenderJob, ...]) -> int | None:
-        signature = self._job_signature(jobs)
+        items = tuple(job.item for job in jobs)
         for index, group in enumerate(self._window._render_queue):
-            if self._job_signature(group.jobs) == signature:
+            if self._window._prepare_jobs.same_jobs(
+                tuple(job.item for job in group.jobs), items
+            ):
                 return index
         return None
-
-    @staticmethod
-    def _job_signature(
-        jobs: tuple[QueuedRenderJob, ...],
-    ) -> tuple[tuple[str, str, str, float, float, float], ...]:
-        return tuple(
-            (
-                str(job.item.spec.source_path),
-                str(job.output_path),
-                job.item.target.key,
-                job.trim_start,
-                job.trim_end,
-                job.split_ratio,
-            )
-            for job in jobs
-        )
 
     def _start_queue(
         self, groups: tuple[QueuedRenderGroup, ...], *, saved_queue: bool

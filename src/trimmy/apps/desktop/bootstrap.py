@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import shutil
 import sys
+from pathlib import Path
 
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
@@ -20,6 +21,7 @@ from trimmy.editing.crop.infrastructure.in_memory_crop_selection_repository impo
 from trimmy.preferences.infrastructure.json_preferences_repository import (
     JsonPreferencesRepository,
 )
+from trimmy.rendering.application.prepare_render_jobs import PrepareRenderJobs
 from trimmy.rendering.application.probe_video_use_case import ProbeVideoUseCase
 from trimmy.rendering.domain.services import FormatSelector
 from trimmy.rendering.infrastructure.ffmpeg import (
@@ -49,8 +51,10 @@ def run(file_path: str | None = None) -> None:
     default_font.setWeight(QFont.Weight(Typography.BODY_WEIGHT))
     app.setFont(default_font)
 
+    presets = InMemoryPresetRepository()
     dependencies = DesktopDependencies(
-        presets=InMemoryPresetRepository(),
+        presets=presets,
+        prepare_jobs=PrepareRenderJobs(presets, Path.exists),
         format_selector=FormatSelector(),
         aspect_calculator=AspectRatioCalculator(),
         probe=ProbeVideoUseCase(FFprobeVideoProber()),
