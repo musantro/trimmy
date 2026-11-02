@@ -1,3 +1,9 @@
+## v0.18.0 (2026-11-02)
+
+### Feat
+
+- share direct render session behavior (#56)
+
 ## v0.17.0 (2026-11-02)
 
 ### Feat
