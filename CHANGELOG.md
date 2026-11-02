@@ -1,3 +1,13 @@
+## v0.20.0 (2026-11-02)
+
+### Feat
+
+- continue rendering and retry failed segments safely (#55)
+
+### Refactor
+
+- share desktop preview playback lifecycle (#59)
+
 ## v0.19.0 (2026-11-02)
 
 ### Feat
