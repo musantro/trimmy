@@ -26,8 +26,8 @@ jobs:
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version-file: ".python-version"
-      - name: Install Qt Multimedia runtime
-        run: sudo apt-get update && sudo apt-get install -y libpulse0 libegl1
+      - name: Install Qt playback test dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libpulse0 libegl1 libopengl0
       - run: uv sync --locked
       - name: Run prek hooks
         run: uv run prek run --all-files --show-diff-on-failure

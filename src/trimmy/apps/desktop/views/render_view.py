@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import sys
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QCloseEvent, QColor, QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -31,6 +38,7 @@ from trimmy.apps.desktop.widgets import PreviewWidget
 class RenderView(QWidget):
     """Full-page rendering progress view for a single platform at a time."""
 
+    preview_stop_requested = Signal()
     cancel_requested = Signal()
     done_requested = Signal()
     queue_job_selected = Signal(int)
@@ -235,6 +243,12 @@ class RenderView(QWidget):
         columns.addWidget(right_wrapper, 0)
 
         scroll_layout.addWidget(card, alignment=Qt.AlignHCenter)  # ty: ignore[unresolved-attribute]
+
+    @override
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Release preview playback when the render view closes."""
+        self.preview_stop_requested.emit()
+        super().closeEvent(event)
 
     def set_global_progress(self, percent: int, estimate_text: str) -> None:
         """Update global progress bar, percentage label, and estimate text."""

@@ -53,6 +53,7 @@ from trimmy.apps.desktop.components import (
     KeybindingsDialog,
     TopNavBar,
 )
+from trimmy.apps.desktop.preview_playback import PreviewPlayback
 from trimmy.apps.desktop.theme import (
     Colors,
     Radii,
@@ -146,6 +147,7 @@ class DesktopDependencies:
     rendering_backend_factory: Callable[[], RenderingBackend]
     crop_widget: CropWidget
     local_event_bus_factory: Callable[[], EventBus]
+    preview_playback_factory: Callable[[], PreviewPlayback]
 
 
 @dataclass(frozen=True)
@@ -180,16 +182,13 @@ class RenderQueueDialog(QDialog):
     def __init__(
         self,
         groups: tuple[QueuedRenderGroup, ...],
+        playback: PreviewPlayback,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._groups = list(groups)
         self._edit_index: int | None = None
-        self._player: QMediaPlayer | None = None
-        self._audio: QAudioOutput | None = None
-        self._sink: QVideoSink | None = None
-        self._trim_start_ms = 0
-        self._trim_end_ms = 0
+        self._playback = playback
 
         self.setWindowTitle("Review Render Queue")
         self.setMinimumSize(920, 620)
@@ -286,6 +285,7 @@ class RenderQueueDialog(QDialog):
         has_groups = bool(self._groups)
         self._render_btn.setEnabled(has_groups)
         if not has_groups:
+            self._stop_preview()
             self._output_label.setText("No jobs queued")
             self._preview.frame = None
             self._preview.update()
@@ -320,20 +320,12 @@ class RenderQueueDialog(QDialog):
         self._preview.set_selection(spec.crops)
         self._preview.split_ratio = job.split_ratio
         self._output_label.setText(f"{len(group.jobs)} outputs selected")
-        self._trim_start_ms = int(job.trim_start * 1000)
-        self._trim_end_ms = int(job.trim_end * 1000)
-
-        self._stop_preview()
-        self._audio = QAudioOutput()
-        self._audio.setVolume(0.0)
-        self._player = QMediaPlayer()
-        self._player.setAudioOutput(self._audio)
-        self._sink = QVideoSink()
-        self._player.setVideoSink(self._sink)
-        self._sink.videoFrameChanged.connect(self._on_preview_frame)
-        self._player.positionChanged.connect(self._on_preview_position)
-        self._player.mediaStatusChanged.connect(self._on_preview_status)
-        self._player.setSource(QUrl.fromLocalFile(str(spec.source_path)))
+        self._playback.start(
+            spec.source_path,
+            job.trim_start,
+            job.trim_end,
+            self._preview.set_frame,
+        )
 
     def _install_selected_row_widget(self, row: int) -> None:
         for index in range(self._list.count()):
@@ -410,36 +402,8 @@ class RenderQueueDialog(QDialog):
             f"QPushButton:hover {{ background: {Colors.ERROR_CONTAINER}; }}"
         )
 
-    def _on_preview_frame(self, frame: QVideoFrame) -> None:
-        img = frame.toImage()
-        if img.isNull():
-            return
-        if img.format() != QImage.Format.Format_ARGB32:
-            img = img.convertToFormat(QImage.Format.Format_ARGB32)
-        self._preview.set_frame(img)
-
-    def _on_preview_position(self, ms: int) -> None:
-        if self._player is None:
-            return
-        if ms < self._trim_start_ms or ms >= self._trim_end_ms:
-            self._player.setPosition(self._trim_start_ms)
-
-    def _on_preview_status(self, status: QMediaPlayer.MediaStatus) -> None:
-        if self._player is None:
-            return
-        if status in (
-            QMediaPlayer.MediaStatus.LoadedMedia,
-            QMediaPlayer.MediaStatus.EndOfMedia,
-        ):
-            self._player.setPosition(self._trim_start_ms)
-            self._player.play()
-
     def _stop_preview(self) -> None:
-        if self._player is not None:
-            self._player.stop()
-        self._player = None
-        self._audio = None
-        self._sink = None
+        self._playback.stop()
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
@@ -510,6 +474,8 @@ class MainWindow(QMainWindow):
         self._rendering_backend_factory = dependencies.rendering_backend_factory
         self._crop_widget = dependencies.crop_widget
         self._local_event_bus_factory = dependencies.local_event_bus_factory
+        self._preview_playback_factory = dependencies.preview_playback_factory
+        self._render_playback = self._preview_playback_factory()
 
         self.video_info: VideoMetadata | None = None
         self._source_path: Path | None = None
@@ -548,9 +514,6 @@ class MainWindow(QMainWindow):
         self._active_preview_group_index: int | None = None
         self._rendering_saved_queue = False
         self._preview_group_pinned = False
-        self._preview_player: QMediaPlayer | None = None
-        self._preview_audio: QAudioOutput | None = None
-        self._preview_sink: QVideoSink | None = None
 
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
@@ -651,6 +614,7 @@ class MainWindow(QMainWindow):
 
         # Index 2: Render view
         self._render_view = RenderView()
+        self._render_view.preview_stop_requested.connect(self._stop_render_preview)
         self._render_view.cancel_requested.connect(self._stop_render)
         self._render_view.done_requested.connect(self._on_render_done)
         self._render_view.queue_job_selected.connect(self._on_render_queue_job_selected)
@@ -972,7 +936,11 @@ class MainWindow(QMainWindow):
         if not self._render_queue:
             return
 
-        dialog = RenderQueueDialog(tuple(self._render_queue), self)
+        dialog = RenderQueueDialog(
+            tuple(self._render_queue),
+            self._preview_playback_factory(),
+            self,
+        )
         result = dialog.exec()
         self._render_queue = list(dialog.groups)
         self._sync_queue_controls()
@@ -1284,88 +1252,30 @@ class MainWindow(QMainWindow):
         )
         self._render_view.preview.split_ratio = self.split_ratio
 
-        self._preview_trim_start_ms = int(
-            self._editor_view.timeline.trim_start * 1000,
-        )
-        self._preview_trim_end_ms = int(
-            self._editor_view.timeline.trim_end * 1000,
-        )
-
-        self._preview_audio = QAudioOutput()
-        self._preview_audio.setVolume(0.0)
-
-        self._preview_player = QMediaPlayer()
-        self._preview_player.setAudioOutput(self._preview_audio)
-
-        self._preview_sink = QVideoSink()
-        self._preview_player.setVideoSink(self._preview_sink)
-        self._preview_sink.videoFrameChanged.connect(self._on_preview_frame)
-        self._preview_player.positionChanged.connect(self._on_preview_position)
-        self._preview_player.mediaStatusChanged.connect(self._on_preview_status)
-
         self._render_view.preview.dimmed = True
-        self._preview_player.setSource(
-            QUrl.fromLocalFile(str(self._source_path)),
+        self._render_playback.start(
+            self._source_path,
+            self._editor_view.timeline.trim_start,
+            self._editor_view.timeline.trim_end,
+            self._render_view.preview.set_frame,
         )
 
     def _start_render_preview_for_job(self, job: QueuedRenderJob) -> None:
         """Play a queued job source in a muted loop inside the render preview."""
-        self._stop_render_preview()
         spec = job.item.spec
         self._render_view.preview.set_selection(spec.crops)
         self._render_view.preview.split_ratio = job.split_ratio
-
-        self._preview_trim_start_ms = int(job.trim_start * 1000)
-        self._preview_trim_end_ms = int(job.trim_end * 1000)
-
-        self._preview_audio = QAudioOutput()
-        self._preview_audio.setVolume(0.0)
-
-        self._preview_player = QMediaPlayer()
-        self._preview_player.setAudioOutput(self._preview_audio)
-
-        self._preview_sink = QVideoSink()
-        self._preview_player.setVideoSink(self._preview_sink)
-        self._preview_sink.videoFrameChanged.connect(self._on_preview_frame)
-        self._preview_player.positionChanged.connect(self._on_preview_position)
-        self._preview_player.mediaStatusChanged.connect(self._on_preview_status)
-
         self._render_view.preview.dimmed = True
-        self._preview_player.setSource(
-            QUrl.fromLocalFile(str(spec.source_path)),
+        self._render_playback.start(
+            spec.source_path,
+            job.trim_start,
+            job.trim_end,
+            self._render_view.preview.set_frame,
         )
 
     def _stop_render_preview(self) -> None:
         """Stop and clean up the render preview player."""
-        if self._preview_player is not None:
-            self._preview_player.stop()
-            self._preview_player = None
-        self._preview_audio = None
-        self._preview_sink = None
-
-    def _on_preview_frame(self, frame: QVideoFrame) -> None:
-        img = frame.toImage()
-        if img.isNull():
-            return
-        if img.format() != QImage.Format.Format_ARGB32:
-            img = img.convertToFormat(QImage.Format.Format_ARGB32)
-        self._render_view.preview.set_frame(img)
-
-    def _on_preview_position(self, ms: int) -> None:
-        if self._preview_player is None:
-            return
-        if ms < self._preview_trim_start_ms or ms >= self._preview_trim_end_ms:
-            self._preview_player.setPosition(self._preview_trim_start_ms)
-
-    def _on_preview_status(self, status: QMediaPlayer.MediaStatus) -> None:
-        if self._preview_player is None:
-            return
-        if status in (
-            QMediaPlayer.MediaStatus.LoadedMedia,
-            QMediaPlayer.MediaStatus.EndOfMedia,
-        ):
-            self._preview_player.setPosition(self._preview_trim_start_ms)
-            self._preview_player.play()
+        self._render_playback.stop()
 
     def _on_render_queue_job_selected(self, group_index: int) -> None:
         self.select_render_group(group_index)

@@ -8,10 +8,12 @@ import sys
 from pathlib import Path
 
 from PySide6.QtGui import QFont
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QVideoSink
 from PySide6.QtWidgets import QApplication
 
 from trimmy.apps.desktop.control_server import ControlServer
 from trimmy.apps.desktop.main_window import DesktopDependencies, MainWindow
+from trimmy.apps.desktop.preview_playback import PlaybackResources, PreviewPlayback
 from trimmy.apps.desktop.theme import Typography, load_fonts
 from trimmy.apps.desktop.widgets import CropWidget
 from trimmy.editing.crop.domain.services import AspectRatioCalculator
@@ -36,6 +38,13 @@ from trimmy.shared.infrastructure.in_memory_event_bus import InMemoryEventBus
 from trimmy.shared.infrastructure.pyside_event_bus import PySideEventBus
 
 logger = logging.getLogger(__name__)
+
+
+def create_preview_playback() -> PreviewPlayback:
+    """Select Qt playback dependencies for each preview lifecycle."""
+    return PreviewPlayback(
+        lambda: PlaybackResources(QMediaPlayer(), QAudioOutput(), QVideoSink()),
+    )
 
 
 def run(file_path: str | None = None) -> None:
@@ -66,6 +75,7 @@ def run(file_path: str | None = None) -> None:
         rendering_backend_factory=FFmpegRenderingBackend,
         crop_widget=CropWidget(InMemoryCropSelectionRepository()),
         local_event_bus_factory=InMemoryEventBus,
+        preview_playback_factory=create_preview_playback,
     )
     window = MainWindow(dependencies, file_path)
     window._control_server = ControlServer(window)  # ty: ignore[unresolved-attribute]
