@@ -15,6 +15,7 @@ from trimmy.apps.cli.domain.models import ControlError, JsonMap, Payload
 from trimmy.apps.desktop.main_window import QueuedRenderGroup, QueuedRenderJob
 from trimmy.editing.crop.domain.models import CropPosition, CropRect
 from trimmy.rendering.domain.messages import StartRenderQueue, StopRendering
+from trimmy.rendering.domain.models import RenderTarget
 
 
 class MainWindowControlAdapter:
@@ -323,27 +324,23 @@ class MainWindowControlAdapter:
         targets = self._window._editor_view.platform_selector.selected_targets()
         if not targets:
             raise ControlError("invalid_target", "At least one target must be selected")
-        if len(targets) == 1:
-            if output is None:
-                raise ControlError(
-                    "output_required", "--output is required for one target"
-                )
-            output_paths = {targets[0]: output}
-        else:
-            if output_dir is None:
-                raise ControlError(
-                    "output_required", "--output-dir is required for multiple targets"
-                )
-            output_paths = {
-                target: output_dir
-                / self._window._default_output_name(
-                    self._window._source_path,
-                    target[0],
-                    target[1],
-                    queue_suffix,
-                )
-                for target in targets
-            }
+        if len(targets) == 1 and output is None:
+            raise ControlError("output_required", "--output is required for one target")
+        if len(targets) > 1 and output_dir is None:
+            raise ControlError(
+                "output_required", "--output-dir is required for multiple targets"
+            )
+        render_targets = tuple(
+            RenderTarget(p, f, self._window.selected_quality) for p, f in targets
+        )
+        paths = self._window._prepare_jobs.destinations(
+            self._window._source_path,
+            render_targets,
+            output=output,
+            output_dir=output_dir,
+            suffix=queue_suffix,
+        )
+        output_paths = dict(zip(targets, paths, strict=True))
         return self._window._build_render_jobs(
             self._window._source_path,
             targets,
