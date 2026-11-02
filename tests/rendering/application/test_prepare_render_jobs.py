@@ -115,3 +115,22 @@ def test_batch_reserves_each_prepared_output():
     )
     assert jobs[0].spec.output_path == Path("out.mp4")
     assert jobs[1].spec.output_path == Path("out_1.mp4")
+
+
+def test_single_file_and_multiple_target_folder_expansion():
+    prep = PrepareRenderJobs(InMemoryPresetRepository(), lambda _p: False)
+    source = Path("source.mp4")
+    target = RenderTarget("instagram", "reels", "max")
+    other = RenderTarget("tiktok", "video", "lite")
+    assert prep.destinations(source, (target,), output=Path("explicit.mov")) == (
+        Path("explicit.mov"),
+    )
+    assert prep.destinations(
+        source, (target, other), output_dir=Path("exports"), suffix=3
+    ) == (
+        Path("exports/source_3_instagram_reels_max.mp4"),
+        Path("exports/source_3_tiktok_video_lite.mp4"),
+    )
+    for targets in ((), (target,), (target, other)):
+        with pytest.raises(ValueError):
+            prep.destinations(source, targets)

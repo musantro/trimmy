@@ -8,7 +8,11 @@ from trimmy.editing.crop.domain import CropSelection
 from trimmy.editing.trim.domain import TrimRange
 from trimmy.rendering.domain.models import RenderQueueItem, RenderSpec, RenderTarget
 from trimmy.rendering.domain.preset_repository import PresetRepository
-from trimmy.rendering.domain.services import FormatSelector, SegmentPlanner
+from trimmy.rendering.domain.services import (
+    FormatSelector,
+    SegmentPlanner,
+    segment_output_path,
+)
 
 
 @dataclass(frozen=True)
@@ -35,13 +39,35 @@ class PrepareRenderJobs:
         number = f"_{suffix}" if suffix is not None else ""
         return f"{source.stem}{number}_{target.key}.mp4"
 
+    @classmethod
+    def destinations(
+        cls,
+        source: Path,
+        targets: tuple[RenderTarget, ...],
+        *,
+        output: Path | None = None,
+        output_dir: Path | None = None,
+        suffix: int | None = None,
+    ) -> tuple[Path, ...]:
+        """Use one explicit filename or expand multiple targets in a folder."""
+        if len(targets) == 1 and output is not None:
+            return (output,)
+        if len(targets) > 1 and output_dir is not None:
+            return tuple(
+                output_dir / cls.output_name(source, t, suffix) for t in targets
+            )
+        message = (
+            "One target requires an output file; multiple targets require a folder"
+        )
+        raise ValueError(message)
+
     @staticmethod
     def output_paths(item: RenderQueueItem) -> tuple[Path, ...]:
         """Return all paths owned by a job, including its base reservation."""
         path = item.spec.output_path
         segments = SegmentPlanner().plan(item.spec.trim, item.max_duration)
         parts = (
-            tuple(path.with_name(f"{path.stem}_part{s.index}.mp4") for s in segments)
+            tuple(segment_output_path(path, s.index) for s in segments)
             if len(segments) > 1
             else ()
         )

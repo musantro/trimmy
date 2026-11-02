@@ -11,7 +11,7 @@ from trimmy.rendering.application.render_video_use_case import RenderVideoUseCas
 from trimmy.rendering.domain.gateways import RenderingBackend
 from trimmy.rendering.domain.models import RenderJobResult, RenderOutcome, RenderSpec
 from trimmy.rendering.domain.preset_repository import PresetRepository
-from trimmy.rendering.domain.services import SegmentPlanner
+from trimmy.rendering.domain.services import SegmentPlanner, segment_output_path
 from trimmy.shared.domain.use_case import UseCase
 
 ProgressListener = Callable[[int], None]
@@ -93,4 +93,4 @@ class RenderSegmentsUseCase(UseCase[RenderJobRequest, RenderJobResult]):
     @staticmethod
     def _segment_path(output_path: Path, index: int) -> Path:
         """Return the part file path for segment *index*."""
-        return output_path.parent / f"{output_path.stem}_part{index}.mp4"
+        return segment_output_path(output_path, index)

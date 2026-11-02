@@ -985,16 +985,13 @@ class MainWindow(QMainWindow):
             return None
         output_root = Path(out_dir)
         self._last_output_folder = str(output_root)
-        paths: dict[tuple[str, str], Path] = {}
-        for platform, format_key in targets:
-            path = output_root / self._default_output_name(
-                src,
-                platform,
-                format_key,
-                queue_suffix,
-            )
-            paths[(platform, format_key)] = path
-        return paths
+        paths = self._prepare_jobs.destinations(
+            src,
+            tuple(RenderTarget(p, f, self.selected_quality) for p, f in targets),
+            output_dir=output_root,
+            suffix=queue_suffix,
+        )
+        return dict(zip(targets, paths, strict=True))
 
     def _build_render_jobs(
         self,

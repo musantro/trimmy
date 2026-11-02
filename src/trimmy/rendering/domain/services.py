@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from pathlib import Path
 
 from trimmy.editing.crop.domain import CropSelection
 from trimmy.editing.trim.domain import TrimRange
@@ -312,3 +313,8 @@ class FormatSelector:
             if fmt.key == key:
                 return fmt
         return formats[0]
+
+
+def segment_output_path(output_path: Path, index: int) -> Path:
+    """Name one multipart output consistently for reservation and rendering."""
+    return output_path.parent / f"{output_path.stem}_part{index}.mp4"
