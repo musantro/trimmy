@@ -37,6 +37,7 @@ class RenderQueueUseCase(UseCase[tuple[RenderQueueItem, ...], RenderQueueResult]
         items: tuple[RenderQueueItem, ...],
         *,
         on_progress: QueueProgressListener | None = None,
+        previous: RenderQueueResult | None = None,
     ) -> RenderQueueResult:
         """Render each queued item and return the aggregate result."""
         if not items:
@@ -45,8 +46,6 @@ class RenderQueueUseCase(UseCase[tuple[RenderQueueItem, ...], RenderQueueResult]
         entries: list[RenderQueueEntryResult] = []
         total = len(items)
         for index, item in enumerate(items):
-            if self._backend.cancelled:
-                break
 
             def progress_cb(
                 pct: int,
@@ -66,13 +65,13 @@ class RenderQueueUseCase(UseCase[tuple[RenderQueueItem, ...], RenderQueueResult]
             result = self._render_segments.render(
                 RenderJobRequest(
                     spec=item.spec,
+                    target=item.target,
                     max_duration=item.max_duration,
                     on_progress=listener,
+                    previous=previous.entries[index].result if previous else None,
                 ),
             )
-            entries.append(RenderQueueEntryResult(item.target, result))
+            entries.append(RenderQueueEntryResult(item.target, result, item))
             progress_cb(100)
-            if result.failures or result.is_cancelled:
-                break
 
         return RenderQueueResult(entries=tuple(entries))

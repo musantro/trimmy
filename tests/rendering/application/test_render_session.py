@@ -228,8 +228,9 @@ def test_progress_and_terminal_presentation_follow_session(outcome, status):
     assert window._editor_view.send_queue_btn.setEnabled.call_args.args == (True,)
     if status == "cancelled":
         window._stop_render_preview.assert_called_once()
-        window._switch_to_view.assert_called_with(1)
-        assert window._active_item_progress == {}
+        window._switch_to_view.assert_called_with(2)
+        assert window._active_item_progress == {0: 42}
+        window._show_render_result.assert_called_once()
     else:
         assert window._active_item_progress == {0: 100 if status == "completed" else 42}
         window._render_view.set_global_progress.assert_called_with(
@@ -413,7 +414,7 @@ def test_saved_queue_terminal_state_and_presentation_preserve_queue_outcomes(sta
         assert session.state.progress == (60, 0, 0)
         if status == "cancelled":
             window._stop_render_preview.assert_called_once()
-            window._switch_to_view.assert_called_with(1)
+            window._switch_to_view.assert_called_with(2)
         else:
             window._render_view.set_queue_job_progress.assert_any_call(0, 30, "")
             window._render_view.set_queue_job_progress.assert_any_call(1, 0, "")
@@ -456,3 +457,94 @@ def test_selecting_current_queue_row_pins_preview(signal_name, monkeypatch):
     view.close()
     view.deleteLater()
     app.processEvents()
+
+
+@pytest.mark.parametrize("retried,status", [(0, "completed"), (None, "cancelled")])
+def test_retry_uses_saved_report_and_tracks_the_direct_session(retried, status):
+    from tests.rendering.application.test_render_application import FakeBackend
+    from trimmy.rendering.application.coordinator import RenderCoordinator
+    from trimmy.rendering.application.render_segments_use_case import (
+        RenderSegmentsUseCase,
+    )
+    from trimmy.rendering.domain.models import ProcessResult
+
+    bus = InMemoryEventBus()
+    session = RenderSession(bus)
+    backend = FakeBackend(
+        results=[
+            ProcessResult(1, "failed"),
+            ProcessResult(retried, "") if retried is not None else None,
+        ]
+    )
+    RenderCoordinator(
+        bus, RenderSegmentsUseCase(InMemoryPresetRepository(), backend), backend
+    )
+    reports = []
+    bus.subscribe(RenderQueueCompleted, reports.append)
+    assert session.start(items())
+    assert session.state.status == "failed"
+    original = reports[-1].result
+    assert session.retry(original)
+    assert session.state.status == status
+    assert len(backend.commands) == 2
+    assert reports[-1].result.entries[0].item is original.entries[0].item
+
+
+def test_retry_rejects_empty_legacy_and_busy_sessions():
+    bus = InMemoryEventBus()
+    session = RenderSession(bus)
+    assert not session.retry(RenderQueueResult(()))
+    assert not session.retry(result(RenderOutcome.failed("legacy")).result)
+    item = items()[0]
+    saved = RenderQueueResult(
+        (
+            RenderQueueEntryResult(
+                item.target,
+                RenderJobResult((RenderOutcome.failed("busy"),), multipart=False),
+                item,
+            ),
+        )
+    )
+    assert session.start(items())
+    assert not session.retry(saved)
+
+
+@pytest.mark.parametrize("retry_code,status", [(0, "completed"), (None, "cancelled")])
+def test_saved_queue_retry_preserves_grouping_and_session_cancellation(
+    retry_code, status
+):
+    from tests.rendering.application.test_render_application import FakeBackend
+    from trimmy.rendering.application.coordinator import RenderCoordinator
+    from trimmy.rendering.application.render_segments_use_case import (
+        RenderSegmentsUseCase,
+    )
+    from trimmy.rendering.domain.models import ProcessResult
+
+    bus = InMemoryEventBus()
+    session = RenderSession(bus)
+    backend = FakeBackend(
+        results=[
+            ProcessResult(0, ""),
+            ProcessResult(1, "failed"),
+            ProcessResult(0, ""),
+            ProcessResult(retry_code, "") if retry_code is not None else None,
+        ]
+    )
+    RenderCoordinator(
+        bus, RenderSegmentsUseCase(InMemoryPresetRepository(), backend), backend
+    )
+    reports = []
+    bus.subscribe(RenderQueueCompleted, reports.append)
+    assert session.start_queue(queued_groups())
+    groups = session.state.groups
+    original = reports[-1].result
+    assert session.retry(original)
+    assert session.state.status == status
+    assert session.state.saved_queue
+    assert session.state.groups is groups
+    assert session.state.item_group_indexes == (0, 0, 1)
+    assert len(backend.commands) == 4
+    assert backend.commands[-1] == backend.commands[1]
+    assert (
+        reports[-1].result.entries[0].result.first is original.entries[0].result.first
+    )

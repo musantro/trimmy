@@ -5,8 +5,10 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import shutil
 import subprocess
 import threading
+import uuid
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -104,6 +106,61 @@ class FFmpegRenderingBackend(RenderingBackend):
         on_progress: Callable[[int], None] | None = None,
     ) -> ProcessResult | None:
         """Run *command*, returning its result or ``None`` if cancelled."""
+        if self.cancelled:
+            return None
+        destination = Path(command[-1])
+        temporary = destination.with_name(
+            f".{destination.stem}.{uuid.uuid4().hex}.partial{destination.suffix}",
+        )
+        result = None
+        try:
+            if destination.exists():
+                return ProcessResult(1, f"Output already exists: {destination}")
+            staged = [*command[:-1], str(temporary)]
+            result = self._run_process(
+                staged, duration=duration, on_progress=on_progress
+            )
+            if result is not None and result.returncode == 0:
+                # Exclusive publication preserves files created since the initial check.
+                self._publish_output(temporary, destination)
+        except OSError as error:
+            result = ProcessResult(1, str(error))
+        finally:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError as error:
+                detail = result.stderr if result is not None else "Cancelled"
+                result = ProcessResult(
+                    1, f"{detail}\nCleanup failed for {temporary}: {error}"
+                )
+        return result
+
+    @staticmethod
+    def _publish_output(temporary: Path, destination: Path) -> None:
+        """Publish exclusively, including on filesystems without hard links."""
+        try:
+            destination.hardlink_to(temporary)
+        except OSError:
+            # Exclusive creation cannot replace an existing completed output.
+            created = False
+            try:
+                with destination.open("xb") as output:
+                    created = True
+                    with temporary.open("rb") as source:
+                        shutil.copyfileobj(source, output)
+            except OSError:
+                if created:
+                    destination.unlink(missing_ok=True)
+                raise
+
+    def _run_process(
+        self,
+        command: Sequence[str],
+        *,
+        duration: float,
+        on_progress: Callable[[int], None] | None,
+    ) -> ProcessResult | None:
+        """Run the encoder against an attempt-owned staging file."""
         track = on_progress is not None and duration > 0
         cmd = list(command)
         if track:

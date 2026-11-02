@@ -26,6 +26,7 @@ class StartRendering(Event):
 
     spec: RenderSpec
     max_duration: int | None = None
+    target: RenderTarget | None = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,13 @@ class StartRenderQueue(Event):
 @dataclass(frozen=True)
 class StopRendering(Event):
     """Command: cancel the render currently in flight."""
+
+
+@dataclass(frozen=True)
+class RetryFailedRendering(Event):
+    """Command: retry only failures from an original run report."""
+
+    result: RenderJobResult | RenderQueueResult
 
 
 @dataclass(frozen=True)
