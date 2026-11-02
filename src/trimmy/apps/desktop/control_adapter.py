@@ -14,7 +14,6 @@ from PySide6.QtWidgets import QApplication
 from trimmy.apps.cli.domain.models import ControlError, JsonMap, Payload
 from trimmy.apps.desktop.main_window import QueuedRenderGroup, QueuedRenderJob
 from trimmy.editing.crop.domain.models import CropPosition, CropRect
-from trimmy.rendering.domain.messages import StartRenderQueue
 from trimmy.rendering.domain.models import RenderTarget
 
 
@@ -262,9 +261,10 @@ class MainWindowControlAdapter:
     def queue_render(self) -> Payload:
         if self._is_rendering():
             raise ControlError("render_in_progress", "A render is already running")
-        if not self._window._render_queue:
+        if not self._window.has_queued_cuts():
             raise ControlError("queue_index_out_of_range", "The render queue is empty")
-        self._start_queue(tuple(self._window._render_queue), saved_queue=True)
+        if not self._window.start_saved_queue():
+            raise ControlError("render_in_progress", "A render is already running")
         return Payload(data={"message": "Rendering queue"})
 
     def render_start(self, output: Path | None, output_dir: Path | None) -> Payload:
@@ -359,39 +359,6 @@ class MainWindowControlAdapter:
             ):
                 return index
         return None
-
-    def _start_queue(
-        self, groups: tuple[QueuedRenderGroup, ...], *, saved_queue: bool
-    ) -> None:
-        jobs = tuple(job for group in groups for job in group.jobs)
-        self._window._editor_view.render_btn.setEnabled(False)
-        self._window._editor_view.send_queue_btn.setEnabled(False)
-        self._window._editor_view.render_queue_btn.setEnabled(False)
-        self._window._editor_view.stop_btn.setVisible(True)
-        self._window._render_view.reset()
-        self._window._rendering_saved_queue = saved_queue
-        self._window._active_render_groups = groups if saved_queue else ()
-        self._window._active_item_group_indexes = tuple(
-            group_index
-            for group_index, group in enumerate(groups)
-            for _job in group.jobs
-        )
-        self._window._active_item_progress = dict.fromkeys(range(len(jobs)), 0)
-        self._window._active_preview_group_index = 0 if saved_queue else None
-        if saved_queue:
-            self._window._render_view.set_queue_jobs(
-                tuple(
-                    self._window._queue_group_label(index, group)
-                    for index, group in enumerate(groups)
-                ),
-            )
-        self._window._render_out_path = str(jobs[0].output_path)
-        self._window._bus.publish(StartRenderQueue(tuple(job.item for job in jobs)))
-        self._window._switch_to_view(2)
-        if saved_queue:
-            self._window._show_render_queue_group(0, force=True)
-        else:
-            self._window._start_render_preview()
 
     def _is_rendering(self) -> bool:
         return self._window.is_rendering()
