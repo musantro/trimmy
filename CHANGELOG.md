@@ -1,3 +1,13 @@
+## v0.17.0 (2026-11-02)
+
+### Feat
+
+- share stable render job preparation (#58)
+
+### Refactor
+
+- centralize render output expansion and part names
+
 ## v0.16.1 (2026-07-21)
 
 ### Refactor
