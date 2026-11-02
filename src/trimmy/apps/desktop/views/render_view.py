@@ -122,6 +122,8 @@ class RenderView(QWidget):
             " }"
         )
         self._queue_list.currentRowChanged.connect(self._on_queue_row_changed)
+        self._queue_list.itemClicked.connect(self._on_queue_item_activated)
+        self._queue_list.itemActivated.connect(self._on_queue_item_activated)
         queue_layout.addWidget(self._queue_list)
         self._queue_section.hide()
         left.addWidget(self._queue_section)
@@ -335,6 +337,10 @@ class RenderView(QWidget):
 
         self.preview.frame = None
         self.preview.update()
+
+    def _on_queue_item_activated(self, item: QListWidgetItem) -> None:
+        """Emit explicit user intent even for the already-selected queued cut."""
+        self._on_queue_row_changed(self._queue_list.row(item))
 
     def _on_queue_row_changed(self, row: int) -> None:
         if 0 <= row < self._queue_job_count:
