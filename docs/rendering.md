@@ -62,3 +62,20 @@ clip_2_tiktok_video_optimized.mp4
   ![Render queue progress](assets/screenshots/render-queue-screen.png){ .trimmy-screenshot }
   <figcaption>Queue rendering tracks each trim and each platform target.</figcaption>
 </figure>
+
+## Results, cancellation, and retry
+
+A failed segment does not stop later segments, targets, or queued cuts. The final
+results dialog lists every output with its cut, target, segment boundaries,
+destination, status, and any encoder error. Open **Show Details** to read the report.
+
+**Cancel Render** stops the active encoder and prevents remaining work from
+starting. Completed files are preserved; the interrupted attempt's temporary file
+is deleted. Cancelled and unattempted outputs have separate statuses. Any cleanup
+error appears in the report.
+
+Choose **Retry failed** in the results dialog to render only failed segments using
+the original saved settings and destinations. Successful, cancelled, and
+unattempted outputs are excluded. Repeated failures remain in the updated report.
+Changing crops or the split ratio in the editor creates new work, independent of
+retrying the saved cut. Existing output files are never replaced.

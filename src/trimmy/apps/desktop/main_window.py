@@ -101,6 +101,7 @@ from trimmy.rendering.domain.messages import (
     RenderProgressed,
     RenderQueueCompleted,
     RenderQueueProgressed,
+    RetryFailedRendering,
     StartRendering,
     StartRenderQueue,
     StopRendering,
@@ -458,7 +459,7 @@ class RenderWorker(QThread):
         self,
         bus: EventBus,
         presets: PresetRepository,
-        command: StartRendering | StartRenderQueue,
+        command: StartRendering | StartRenderQueue | RetryFailedRendering,
         backend: RenderingBackend,
         local_event_bus_factory: Callable[[], EventBus],
     ) -> None:
@@ -534,6 +535,7 @@ class MainWindow(QMainWindow):
         self._bus.subscribe(StartRenderQueue, self._on_start_rendering)
         self._bus.subscribe(StopRendering, self._on_stop_rendering)
         self._bus.subscribe(RenderProgressed, self._on_render_progressed)
+        self._bus.subscribe(RetryFailedRendering, self._on_start_rendering)
         self._bus.subscribe(RenderCompleted, self._on_render_completed)
         self._bus.subscribe(RenderQueueProgressed, self._on_render_queue_progressed)
         self._bus.subscribe(RenderQueueCompleted, self._on_render_queue_completed)
@@ -1132,8 +1134,12 @@ class MainWindow(QMainWindow):
             for path in self._prepare_jobs.output_paths(job.item)
         }
 
-    def _on_start_rendering(self, command: StartRendering | StartRenderQueue) -> None:
+    def _on_start_rendering(
+        self, command: StartRendering | StartRenderQueue | RetryFailedRendering
+    ) -> None:
         """Launch the render worker for *command* off the GUI thread."""
+        if self._render_worker is not None and self._render_worker.isRunning():
+            self._render_worker.wait()
         self._render_worker = RenderWorker(
             self._bus,
             self._presets,
@@ -1182,29 +1188,13 @@ class MainWindow(QMainWindow):
         self._editor_view.stop_btn.setVisible(False)
         self._sync_queue_controls()
 
+        self._render_view.set_global_progress(
+            100, "Rendering stopped" if result.is_cancelled else "Render finished"
+        )
         if result.is_cancelled:
             self._stop_render_preview()
-            self._render_view.reset()
-            self._active_render_groups = ()
-            self._active_item_group_indexes = ()
-            self._active_item_progress = {}
-            self._active_preview_group_index = None
-            self._switch_to_view(_VIEW_EDITOR)
-            return
-
-        self._render_view.set_global_progress(100, "Render complete!")
-        self._render_view.set_platform_info(self.selected_platform, 100)
         self._render_view.show_done()
-        self._render_view.preview.dimmed = False
-        self._render_view.preview.update()
-
-        if result.multipart:
-            self._show_multipart_result(result)
-            return
-
-        outcome = result.first
-        if outcome.is_failed:
-            return
+        self._show_render_result(result)
 
     def _on_render_queue_completed(self, event: RenderQueueCompleted) -> None:
         result = event.result
@@ -1214,20 +1204,12 @@ class MainWindow(QMainWindow):
         self._editor_view.stop_btn.setVisible(False)
         self._sync_queue_controls()
 
-        if result.is_cancelled or session_state.status == "cancelled":
-            self._stop_render_preview()
-            self._render_view.reset()
-            self._active_render_groups = ()
-            self._active_item_group_indexes = ()
-            self._active_item_progress = {}
-            self._active_preview_group_index = None
-            self._switch_to_view(_VIEW_EDITOR)
-            return
-
         failed = bool(result.failures)
         self._render_view.set_global_progress(
-            session_state.global_progress if failed else 100,
-            "Render failed" if failed else "Render complete!",
+            session_state.global_progress if failed or result.is_cancelled else 100,
+            "Rendering stopped"
+            if result.is_cancelled
+            else ("Render failed" if failed else "Render complete!"),
         )
         for item_index, entry in enumerate(result.entries):
             if not self._rendering_saved_queue:
@@ -1244,19 +1226,46 @@ class MainWindow(QMainWindow):
                 self._refresh_render_queue_group_details(
                     self._active_preview_group_index,
                 )
-        self._render_view.show_done()
         self._render_view.preview.dimmed = False
         self._render_view.preview.update()
 
-        self._show_queue_result(result)
-        if self._rendering_saved_queue and not result.failures:
+        if result.is_cancelled:
+            self._stop_render_preview()
+        self._render_view.show_done()
+        self._show_render_result(result)
+        if (
+            self._rendering_saved_queue
+            and not result.failures
+            and not result.is_cancelled
+        ):
             self._render_queue.clear()
-            self._active_render_groups = ()
-            self._active_item_group_indexes = ()
-            self._active_item_progress = {}
-            self._active_preview_group_index = None
-            self._rendering_saved_queue = False
             self._sync_queue_controls()
+
+    def _show_render_result(self, result: RenderJobResult | RenderQueueResult) -> None:
+        from trimmy.apps.desktop.render_report import render_report
+
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Render results")
+        dialog.setText(
+            "Rendering stopped." if result.is_cancelled else "Rendering finished."
+        )
+        dialog.setInformativeText(
+            "Review each output below. Retry failed attempts only failed segments."
+        )
+        dialog.setDetailedText(render_report(result))
+        dialog.setStandardButtons(QMessageBox.StandardButton.Close)
+        retry = None
+        if result.failures:
+            retry = dialog.addButton("Retry failed", QMessageBox.ButtonRole.ActionRole)
+        dialog.exec()
+        if retry is not None and dialog.clickedButton() == retry:
+            if isinstance(result, RenderQueueResult):
+                self.render_session.retry(result)
+                return
+            self._render_view.reset()
+            self._editor_view.stop_btn.setVisible(True)
+            self._editor_view.render_btn.setEnabled(False)
+            self._bus.publish(RetryFailedRendering(result))
 
     def _on_render_done(self) -> None:
         """Navigate back to editor after user clicks Done on render view."""
@@ -1357,21 +1366,6 @@ class MainWindow(QMainWindow):
         ):
             self._preview_player.setPosition(self._preview_trim_start_ms)
             self._preview_player.play()
-
-    def _show_multipart_result(self, result: RenderJobResult) -> None:
-        pass
-
-    def _show_queue_result(self, result: RenderQueueResult) -> None:
-        if not result.failures:
-            return
-        failed = ", ".join(
-            self._target_label(entry.target) for entry in result.failures
-        )
-        QMessageBox.warning(
-            self,
-            "Render failed",
-            f"Could not render: {failed}",
-        )
 
     def _on_render_queue_job_selected(self, group_index: int) -> None:
         self.select_render_group(group_index)

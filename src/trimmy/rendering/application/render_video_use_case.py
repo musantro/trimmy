@@ -77,8 +77,10 @@ class RenderVideoUseCase(UseCase[RenderSpec, RenderOutcome]):
                     duration=duration,
                     on_progress=on_progress,
                 )
-                if result is None:
-                    return RenderOutcome.cancelled()
+                if result is None or (
+                    self._backend.cancelled and result.returncode != 0
+                ):
+                    return RenderOutcome.cancelled(result.stderr if result else None)
                 if result.returncode == 0:
                     return RenderOutcome.succeeded(
                         size_mb=self._backend.output_size_mb(
@@ -111,8 +113,8 @@ class RenderVideoUseCase(UseCase[RenderSpec, RenderOutcome]):
             duration=duration,
             on_progress=on_progress,
         )
-        if result is None:
-            return RenderOutcome.cancelled()
+        if result is None or (self._backend.cancelled and result.returncode != 0):
+            return RenderOutcome.cancelled(result.stderr if result else None)
         if result.returncode != 0:
             return RenderOutcome.failed(result.stderr[-_CPU_STDERR_TAIL:])
         return RenderOutcome.succeeded(

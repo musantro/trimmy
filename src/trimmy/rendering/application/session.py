@@ -8,10 +8,11 @@ from typing import Literal
 from trimmy.rendering.domain.messages import (
     RenderQueueCompleted,
     RenderQueueProgressed,
+    RetryFailedRendering,
     StartRenderQueue,
     StopRendering,
 )
-from trimmy.rendering.domain.models import RenderQueueItem
+from trimmy.rendering.domain.models import RenderQueueItem, RenderQueueResult
 from trimmy.shared.domain.event import Event
 from trimmy.shared.domain.event_bus import EventBus
 
@@ -84,11 +85,25 @@ class RenderSession:
         """Start immutable queued cuts through the same session transitions."""
         return self._start(groups, saved_queue=True)
 
+    def retry(self, result: RenderQueueResult) -> bool:
+        """Retry saved failures while retaining the original queued-cut grouping."""
+        recorded = tuple(entry.item for entry in result.entries)
+        if any(item is None for item in recorded):
+            return False
+        items = tuple(item for item in recorded if item is not None)
+        same_run = self._state.items == items
+        return self._start(
+            self._state.groups if same_run else (items,),
+            saved_queue=self._state.saved_queue if same_run else False,
+            retry=result,
+        )
+
     def _start(
         self,
         groups: tuple[tuple[RenderQueueItem, ...], ...],
         *,
         saved_queue: bool,
+        retry: RenderQueueResult | None = None,
     ) -> bool:
         if self._state.active or not groups or any(not group for group in groups):
             return False
@@ -100,7 +115,11 @@ class RenderSession:
             saved_queue=saved_queue,
         )
         self._bus.publish(RenderSessionStarted(self._state))
-        self._bus.publish(StartRenderQueue(items))
+        self._bus.publish(
+            RetryFailedRendering(retry)
+            if retry is not None
+            else StartRenderQueue(items)
+        )
         return True
 
     def cancel(self) -> None:

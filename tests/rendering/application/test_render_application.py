@@ -225,13 +225,19 @@ def test_segments_cancelled_before_first_part():
     assert backend.commands == []
 
 
-def test_segments_failure_breaks_early():
-    backend = FakeBackend(results=[ProcessResult(1, "bad part")])
+def test_segments_failure_continues():
+    backend = FakeBackend(
+        results=[
+            ProcessResult(1, "bad part"),
+            ProcessResult(0, ""),
+            ProcessResult(0, ""),
+        ]
+    )
     result = RenderSegmentsUseCase(_presets(), backend).render(
         RenderJobRequest(spec=make_spec(trim=TrimRange(0.0, 25.0)), max_duration=10.0),
     )
     assert result.failures
-    assert result.parts == 1
+    assert result.parts == 3
     assert result.failures[0].index == 1
 
 
@@ -291,7 +297,7 @@ def test_queue_reports_global_progress_across_targets():
     assert progress[-1] == (1, "twitter", 100, 100)
 
 
-def test_queue_stops_after_failure():
+def test_queue_continues_after_failure():
     backend = FakeBackend(results=[ProcessResult(1, "bad"), ProcessResult(0, "")])
     use_case = RenderQueueUseCase(RenderSegmentsUseCase(_presets(), backend), backend)
 
@@ -303,5 +309,11 @@ def test_queue_stops_after_failure():
     )
 
     assert result.failures
-    assert result.parts == 1
-    assert len(backend.commands) == 1
+    assert result.parts == 2
+    assert len(backend.commands) == 2
+
+
+def test_render_cancelled_before_cpu_starts():
+    backend = FakeBackend(cancelled=True)
+    assert RenderVideoUseCase(_presets(), backend).render(make_spec()).is_cancelled
+    assert not backend.commands

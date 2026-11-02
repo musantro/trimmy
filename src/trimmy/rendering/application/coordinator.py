@@ -21,11 +21,15 @@ from trimmy.rendering.domain.messages import (
     RenderProgressed,
     RenderQueueCompleted,
     RenderQueueProgressed,
+    RetryFailedRendering,
     StartRendering,
     StartRenderQueue,
     StopRendering,
 )
-from trimmy.rendering.domain.models import RenderTarget
+from trimmy.rendering.domain.models import (
+    RenderQueueResult,
+    RenderTarget,
+)
 from trimmy.shared.domain.event_bus import EventBus
 
 
@@ -46,12 +50,41 @@ class RenderCoordinator:
         bus.subscribe(StartRendering, self._on_start)
         bus.subscribe(StartRenderQueue, self._on_start_queue)
         bus.subscribe(StopRendering, self._on_stop)
+        bus.subscribe(RetryFailedRendering, self._on_retry)
+
+    def _on_retry(self, command: RetryFailedRendering) -> None:
+        previous = command.result
+        if isinstance(previous, RenderQueueResult):
+            items = tuple(entry.item for entry in previous.entries)
+            if any(item is None for item in items):
+                return
+            result = self._queue.render(
+                tuple(item for item in items if item is not None),
+                previous=previous,
+                on_progress=self._publish_queue_progress,
+            )
+            self._bus.publish(RenderQueueCompleted(result))
+        else:
+            spec = previous.first.spec
+            if spec is None:
+                return
+            result = self._render.render(
+                RenderJobRequest(
+                    spec,
+                    None,
+                    self._publish_progress,
+                    previous,
+                    previous.target,
+                )
+            )
+            self._bus.publish(RenderCompleted(result))
 
     def _on_start(self, command: StartRendering) -> None:
         """Render the requested spec, emitting progress then the outcome."""
         request = RenderJobRequest(
             spec=command.spec,
             max_duration=command.max_duration,
+            target=command.target,
             on_progress=self._publish_progress,
         )
         result = self._render.render(request)

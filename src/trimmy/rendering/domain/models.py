@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from trimmy.editing.crop.domain import CropSelection
@@ -182,6 +183,15 @@ class RenderQueueItem:
     max_duration: int | None
 
 
+class RenderStatus(Enum):
+    """Mutually exclusive states for a planned output."""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    UNATTEMPTED = "unattempted"
+
+
 @dataclass(frozen=True)
 class RenderOutcome:
     """The result of rendering a single clip or segment."""
@@ -194,6 +204,9 @@ class RenderOutcome:
     index: int = 1
     total: int = 1
     path: str | None = None
+    spec: RenderSpec | None = None
+    cut_spec: RenderSpec | None = None
+    status: RenderStatus = RenderStatus.SUCCEEDED
 
     @classmethod
     def succeeded(
@@ -215,27 +228,32 @@ class RenderOutcome:
     @classmethod
     def failed(cls, message: str) -> RenderOutcome:
         """Build a failed outcome carrying *message*."""
-        return cls(error=message)
+        return cls(error=message, status=RenderStatus.FAILED)
 
     @classmethod
-    def cancelled(cls) -> RenderOutcome:
+    def cancelled(cls, detail: str | None = None) -> RenderOutcome:
         """Build a cancelled outcome."""
-        return cls(error=CANCELLED_MESSAGE)
+        return cls(error=detail or CANCELLED_MESSAGE, status=RenderStatus.CANCELLED)
+
+    @property
+    def unattempted(self) -> bool:
+        """Return whether this output has never been attempted."""
+        return self.status is RenderStatus.UNATTEMPTED
 
     @property
     def is_cancelled(self) -> bool:
         """Return whether the render was cancelled."""
-        return self.error == CANCELLED_MESSAGE
+        return self.status is RenderStatus.CANCELLED
 
     @property
     def is_failed(self) -> bool:
         """Return whether the render failed for a non-cancel reason."""
-        return self.error is not None and not self.is_cancelled
+        return self.status is RenderStatus.FAILED
 
     @property
     def is_success(self) -> bool:
         """Return whether the render completed successfully."""
-        return self.error is None
+        return self.status is RenderStatus.SUCCEEDED
 
 
 class RenderJobResult(AggregateRoot):
@@ -252,10 +270,14 @@ class RenderJobResult(AggregateRoot):
         outcomes: tuple[RenderOutcome, ...],
         *,
         multipart: bool,
+        cancelled: bool = False,
+        target: RenderTarget | None = None,
     ) -> None:
         super().__init__()
         self._outcomes = outcomes
         self._multipart = multipart
+        self._cancelled = cancelled
+        self.target = target
 
     @property
     def outcomes(self) -> tuple[RenderOutcome, ...]:
@@ -280,7 +302,9 @@ class RenderJobResult(AggregateRoot):
     @property
     def is_cancelled(self) -> bool:
         """Return whether any part was cancelled."""
-        return any(outcome.is_cancelled for outcome in self._outcomes)
+        return self._cancelled or any(
+            outcome.is_cancelled for outcome in self._outcomes
+        )
 
     @property
     def failures(self) -> tuple[RenderOutcome, ...]:
@@ -302,6 +326,7 @@ class RenderQueueEntryResult:
 
     target: RenderTarget
     result: RenderJobResult
+    item: RenderQueueItem | None = None
 
 
 class RenderQueueResult(AggregateRoot):
