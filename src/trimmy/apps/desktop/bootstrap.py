@@ -23,6 +23,7 @@ from trimmy.preferences.infrastructure.json_preferences_repository import (
 )
 from trimmy.rendering.application.prepare_render_jobs import PrepareRenderJobs
 from trimmy.rendering.application.probe_video_use_case import ProbeVideoUseCase
+from trimmy.rendering.application.session import RenderSession
 from trimmy.rendering.domain.services import FormatSelector
 from trimmy.rendering.infrastructure.ffmpeg import (
     FFmpegRenderingBackend,
@@ -51,6 +52,7 @@ def run(file_path: str | None = None) -> None:
     default_font.setWeight(QFont.Weight(Typography.BODY_WEIGHT))
     app.setFont(default_font)
 
+    bus = PySideEventBus()
     presets = InMemoryPresetRepository()
     dependencies = DesktopDependencies(
         presets=presets,
@@ -59,7 +61,8 @@ def run(file_path: str | None = None) -> None:
         aspect_calculator=AspectRatioCalculator(),
         probe=ProbeVideoUseCase(FFprobeVideoProber()),
         preferences_repository=JsonPreferencesRepository(),
-        event_bus=PySideEventBus(),
+        event_bus=bus,
+        render_session=RenderSession(bus),
         rendering_backend_factory=FFmpegRenderingBackend,
         crop_widget=CropWidget(InMemoryCropSelectionRepository()),
         local_event_bus_factory=InMemoryEventBus,
