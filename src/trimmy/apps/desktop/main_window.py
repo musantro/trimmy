@@ -94,7 +94,7 @@ from trimmy.rendering.application.probe_video_use_case import (
 from trimmy.rendering.application.render_segments_use_case import (
     RenderSegmentsUseCase,
 )
-from trimmy.rendering.application.session import DirectRenderStarted, RenderSession
+from trimmy.rendering.application.session import RenderSession, RenderSessionStarted
 from trimmy.rendering.domain.gateways import RenderingBackend
 from trimmy.rendering.domain.messages import (
     RenderCompleted,
@@ -529,7 +529,7 @@ class MainWindow(QMainWindow):
 
         self.render_session = dependencies.render_session
         self._bus = dependencies.event_bus
-        self._bus.subscribe(DirectRenderStarted, self._on_direct_render_started)
+        self._bus.subscribe(RenderSessionStarted, self._on_render_session_started)
         self._bus.subscribe(StartRendering, self._on_start_rendering)
         self._bus.subscribe(StartRenderQueue, self._on_start_rendering)
         self._bus.subscribe(StopRendering, self._on_stop_rendering)
@@ -545,6 +545,7 @@ class MainWindow(QMainWindow):
         self._active_item_progress: dict[int, int] = {}
         self._active_preview_group_index: int | None = None
         self._rendering_saved_queue = False
+        self._preview_group_pinned = False
         self._preview_player: QMediaPlayer | None = None
         self._preview_audio: QAudioOutput | None = None
         self._preview_sink: QVideoSink | None = None
@@ -880,22 +881,64 @@ class MainWindow(QMainWindow):
             self._render_worker is not None and self._render_worker.isRunning()
         )
 
-    def _on_direct_render_started(self, event: DirectRenderStarted) -> None:
+    def _on_render_session_started(self, event: RenderSessionStarted) -> None:
         self._editor_view.render_btn.setEnabled(False)
         self._editor_view.send_queue_btn.setEnabled(False)
         self._editor_view.render_queue_btn.setEnabled(False)
         self._editor_view.stop_btn.setVisible(True)
         self._render_view.reset()
-        self._rendering_saved_queue = False
-        self._active_render_groups = ()
-        self._active_item_group_indexes = ()
-        self._active_item_progress = dict.fromkeys(range(len(event.items)), 0)
+        state = event.state
+        self._rendering_saved_queue = state.saved_queue
+        self._active_render_groups = (
+            tuple(
+                QueuedRenderGroup(
+                    tuple(
+                        QueuedRenderJob(
+                            item,
+                            item.spec.source_path.name,
+                            item.spec.output_path,
+                            item.spec.trim.start,
+                            item.spec.trim.end,
+                            item.spec.split_ratio,
+                        )
+                        for item in group
+                    )
+                )
+                for group in state.groups
+            )
+            if state.saved_queue
+            else ()
+        )
+        self._active_item_group_indexes = state.item_group_indexes
+        self._active_item_progress = dict(enumerate(state.progress))
         self._active_preview_group_index = None
-        self._render_out_path = str(event.items[0].spec.output_path)
-        for item in event.items:
-            self._render_view.set_platform_info(self._target_label(item.target), 0)
+        self._preview_group_pinned = False
+        self._render_out_path = str(state.items[0].spec.output_path)
         self._switch_to_view(_VIEW_RENDER)
-        self._start_render_preview()
+        if state.saved_queue:
+            self._render_view.set_queue_jobs(
+                tuple(
+                    self._queue_group_label(index, group)
+                    for index, group in enumerate(self._active_render_groups)
+                )
+            )
+            self._show_render_queue_group(0, force=True)
+        else:
+            for item in state.items:
+                self._render_view.set_platform_info(self._target_label(item.target), 0)
+            self._start_render_preview()
+
+    def has_queued_cuts(self) -> bool:
+        """Report whether the saved queue has cuts ready to render."""
+        return bool(self._render_queue)
+
+    def start_saved_queue(self) -> bool:
+        """Start the saved queue from GUI or CLI intent without changing its cuts."""
+        if self.is_rendering():
+            return False
+        return self.render_session.start_queue(
+            tuple(tuple(job.item for job in group.jobs) for group in self._render_queue)
+        )
 
     def _send_to_queue(self) -> None:
         if not self.video_info or self._source_path is None:
@@ -941,34 +984,7 @@ class MainWindow(QMainWindow):
         if result != QDialog.DialogCode.Accepted or not self._render_queue:
             return
 
-        self._editor_view.render_btn.setEnabled(False)
-        self._editor_view.send_queue_btn.setEnabled(False)
-        self._editor_view.render_queue_btn.setEnabled(False)
-        self._editor_view.stop_btn.setVisible(True)
-        self._render_view.reset()
-        self._rendering_saved_queue = True
-
-        queued_jobs = tuple(job for group in self._render_queue for job in group.jobs)
-        items = tuple(job.item for job in queued_jobs)
-        self._active_render_groups = tuple(self._render_queue)
-        self._active_item_group_indexes = tuple(
-            group_index
-            for group_index, group in enumerate(self._active_render_groups)
-            for _job in group.jobs
-        )
-        self._active_item_progress = dict.fromkeys(range(len(queued_jobs)), 0)
-        self._active_preview_group_index = 0
-        self._render_view.set_queue_jobs(
-            tuple(
-                self._queue_group_label(index, group)
-                for index, group in enumerate(self._active_render_groups)
-            ),
-        )
-        self._render_out_path = str(queued_jobs[0].output_path)
-        self._bus.publish(StartRenderQueue(items))
-
-        self._switch_to_view(_VIEW_RENDER)
-        self._show_render_queue_group(0, force=True)
+        self.start_saved_queue()
 
     def _choose_output_paths(
         self,
@@ -1147,8 +1163,9 @@ class MainWindow(QMainWindow):
         if self._rendering_saved_queue and event.item_index < len(
             self._active_item_group_indexes,
         ):
-            self._active_item_progress[event.item_index] = event.target_pct
             group_index = self._active_item_group_indexes[event.item_index]
+            if not self._preview_group_pinned:
+                self._show_render_queue_group(group_index)
             self._render_view.set_queue_job_progress(
                 group_index,
                 self._queue_group_progress(group_index),
@@ -1191,16 +1208,13 @@ class MainWindow(QMainWindow):
 
     def _on_render_queue_completed(self, event: RenderQueueCompleted) -> None:
         result = event.result
-        direct_state = self.render_session.state
-        if not self._rendering_saved_queue:
-            self._active_item_progress = dict(enumerate(direct_state.progress))
+        session_state = self.render_session.state
+        self._active_item_progress = dict(enumerate(session_state.progress))
         self._editor_view.render_btn.setEnabled(bool(self.selected_targets))
         self._editor_view.stop_btn.setVisible(False)
         self._sync_queue_controls()
 
-        if result.is_cancelled or (
-            not self._rendering_saved_queue and direct_state.status == "cancelled"
-        ):
+        if result.is_cancelled or session_state.status == "cancelled":
             self._stop_render_preview()
             self._render_view.reset()
             self._active_render_groups = ()
@@ -1212,22 +1226,20 @@ class MainWindow(QMainWindow):
 
         failed = bool(result.failures)
         self._render_view.set_global_progress(
-            direct_state.global_progress
-            if failed and not self._rendering_saved_queue
-            else 100,
+            session_state.global_progress if failed else 100,
             "Render failed" if failed else "Render complete!",
         )
         for item_index, entry in enumerate(result.entries):
-            if self._rendering_saved_queue:
-                self._active_item_progress[item_index] = 100
-            else:
+            if not self._rendering_saved_queue:
                 self._render_view.set_platform_info(
                     self._target_label(entry.target),
-                    direct_state.progress[item_index],
+                    session_state.progress[item_index],
                 )
         if self._rendering_saved_queue:
             for group_index in range(len(self._active_render_groups)):
-                self._render_view.set_queue_job_progress(group_index, 100, "")
+                self._render_view.set_queue_job_progress(
+                    group_index, session_state.group_progress(group_index), ""
+                )
             if self._active_preview_group_index is not None:
                 self._refresh_render_queue_group_details(
                     self._active_preview_group_index,
@@ -1362,6 +1374,13 @@ class MainWindow(QMainWindow):
         )
 
     def _on_render_queue_job_selected(self, group_index: int) -> None:
+        self.select_render_group(group_index)
+
+    def select_render_group(self, group_index: int) -> None:
+        """Pin preview selection to a queued cut without changing its snapshot."""
+        if not 0 <= group_index < len(self._active_render_groups):
+            return
+        self._preview_group_pinned = True
         self._show_render_queue_group(group_index, force=True)
 
     def _show_render_queue_group(
@@ -1371,6 +1390,7 @@ class MainWindow(QMainWindow):
             return
         if force or self._active_preview_group_index != group_index:
             self._active_preview_group_index = group_index
+            self._render_view.select_queue_job(group_index)
             self._start_render_preview_for_job(
                 self._active_render_groups[group_index].first
             )
@@ -1402,17 +1422,7 @@ class MainWindow(QMainWindow):
         )
 
     def _queue_group_progress(self, group_index: int) -> int:
-        if group_index < 0 or group_index >= len(self._active_render_groups):
-            return 0
-        item_indexes = [
-            index
-            for index, owner in enumerate(self._active_item_group_indexes)
-            if owner == group_index
-        ]
-        if not item_indexes:
-            return 0
-        total = sum(self._active_item_progress.get(index, 0) for index in item_indexes)
-        return int(total / len(item_indexes))
+        return self.render_session.state.group_progress(group_index)
 
     def _queue_group_label(self, index: int, group: QueuedRenderGroup) -> str:
         first = group.first
@@ -1439,11 +1449,8 @@ class MainWindow(QMainWindow):
         )
 
     def stop_render(self) -> None:
-        """Cancel a direct session or the legacy saved queue."""
-        if self.render_session.state.active:
-            self.render_session.cancel()
-        else:
-            self._bus.publish(StopRendering())
+        """Request cancellation through the shared session boundary."""
+        self.render_session.cancel()
 
     def _stop_render(self) -> None:
         self.stop_render()
