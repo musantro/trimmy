@@ -83,6 +83,10 @@ from trimmy.preferences.application.save_preferences_use_case import (
 from trimmy.preferences.domain.models import Preferences, TargetPreference
 from trimmy.preferences.domain.preferences_repository import PreferencesRepository
 from trimmy.rendering.application.coordinator import RenderCoordinator
+from trimmy.rendering.application.prepare_render_jobs import (
+    EditSnapshot,
+    PrepareRenderJobs,
+)
 from trimmy.rendering.application.probe_video_use_case import (
     ProbeVideoRequest,
     ProbeVideoUseCase,
@@ -105,7 +109,6 @@ from trimmy.rendering.domain.models import (
     RenderJobResult,
     RenderQueueItem,
     RenderQueueResult,
-    RenderSpec,
     RenderTarget,
     VideoMetadata,
 )
@@ -134,6 +137,7 @@ class DesktopDependencies:
     format_selector: FormatSelector
     aspect_calculator: AspectRatioCalculator
     probe: ProbeVideoUseCase
+    prepare_jobs: PrepareRenderJobs
     preferences_repository: PreferencesRepository
     event_bus: EventBus
     rendering_backend_factory: Callable[[], RenderingBackend]
@@ -494,6 +498,7 @@ class MainWindow(QMainWindow):
 
         self.setAcceptDrops(True)
 
+        self._prepare_jobs = dependencies.prepare_jobs
         self._presets = dependencies.presets
         self._format_selector = dependencies.format_selector
         self._aspect_calculator = dependencies.aspect_calculator
@@ -870,7 +875,7 @@ class MainWindow(QMainWindow):
         for job in jobs:
             self._render_view.set_platform_info(self._target_label(job.item.target), 0)
 
-        self._render_out_path = str(next(iter(output_paths.values())))
+        self._render_out_path = str(jobs[0].output_path)
         self._bus.publish(StartRenderQueue(tuple(items)))
 
         self._switch_to_view(_VIEW_RENDER)
@@ -954,7 +959,6 @@ class MainWindow(QMainWindow):
         *,
         queue_suffix: int | None = None,
     ) -> dict[tuple[str, str], Path] | None:
-        reserved = self._queued_output_paths()
         if len(targets) == 1:
             platform, format_key = targets[0]
             default_name = self._default_output_name(
@@ -970,7 +974,7 @@ class MainWindow(QMainWindow):
                 return None
             selected = Path(out_path)
             self._last_output_folder = str(selected.parent)
-            return {targets[0]: self._available_output_path(selected, reserved)}
+            return {targets[0]: selected}
 
         out_dir = QFileDialog.getExistingDirectory(
             self,
@@ -989,8 +993,7 @@ class MainWindow(QMainWindow):
                 format_key,
                 queue_suffix,
             )
-            paths[(platform, format_key)] = self._available_output_path(path, reserved)
-            reserved.add(paths[(platform, format_key)])
+            paths[(platform, format_key)] = path
         return paths
 
     def _build_render_jobs(
@@ -998,37 +1001,37 @@ class MainWindow(QMainWindow):
         src: Path,
         targets: tuple[tuple[str, str], ...],
         output_paths: dict[tuple[str, str], Path],
+        *,
+        avoid_collisions: bool = True,
     ) -> tuple[QueuedRenderJob, ...]:
         if self.video_info is None:
             return ()
 
-        jobs: list[QueuedRenderJob] = []
-        trim_range = self._editor_view.timeline.trim_range
-        crops = self._editor_view.crop_widget.selection
-        for platform, format_key in targets:
-            fmt = self._get_format(platform, format_key)
-            target = RenderTarget(platform, format_key, self.selected_quality)
-            spec = RenderSpec(
-                source_path=src,
-                output_path=output_paths[(platform, format_key)],
-                trim=trim_range,
-                crops=crops,
-                split_ratio=self.split_ratio,
-                platform=platform,
-                quality=self.selected_quality,
-                source_fps=self.video_info.fps,
+        snapshot = EditSnapshot(
+            src,
+            self._editor_view.timeline.trim_range,
+            self._editor_view.crop_widget.selection,
+            self.split_ratio,
+            self.video_info.fps,
+        )
+        items = self._prepare_jobs.prepare(
+            snapshot,
+            tuple(RenderTarget(p, f, self.selected_quality) for p, f in targets),
+            tuple(output_paths[target] for target in targets),
+            reserved=frozenset(self._queued_output_paths()),
+            avoid_collisions=avoid_collisions,
+        )
+        return tuple(
+            QueuedRenderJob(
+                item,
+                src.name,
+                item.spec.output_path,
+                item.spec.trim.start,
+                item.spec.trim.end,
+                item.spec.split_ratio,
             )
-            jobs.append(
-                QueuedRenderJob(
-                    item=RenderQueueItem(target, spec, fmt.max_duration),
-                    source_name=src.name,
-                    output_path=output_paths[(platform, format_key)],
-                    trim_start=trim_range.start,
-                    trim_end=trim_range.end,
-                    split_ratio=self.split_ratio,
-                ),
-            )
-        return tuple(jobs)
+            for item in items
+        )
 
     def _edit_queued_group(self, group_index: int) -> None:
         if group_index < 0 or group_index >= len(self._render_queue):
@@ -1086,24 +1089,17 @@ class MainWindow(QMainWindow):
         format_key: str,
         queue_suffix: int | None,
     ) -> str:
-        suffix = f"_{queue_suffix}" if queue_suffix is not None else ""
-        return f"{src.stem}{suffix}_{platform}_{format_key}_{self.selected_quality}.mp4"
+        return self._prepare_jobs.output_name(
+            src, RenderTarget(platform, format_key, self.selected_quality), queue_suffix
+        )
 
     def _queued_output_paths(self) -> set[Path]:
-        return {job.output_path for group in self._render_queue for job in group.jobs}
-
-    @staticmethod
-    def _available_output_path(path: Path, reserved: set[Path]) -> Path:
-        if path not in reserved and not path.exists():
-            return path
-
-        stem = path.stem
-        suffix = path.suffix
-        for index in range(1, 10_000):
-            candidate = path.with_name(f"{stem}_{index}{suffix}")
-            if candidate not in reserved and not candidate.exists():
-                return candidate
-        return path
+        return {
+            path
+            for group in self._render_queue
+            for job in group.jobs
+            for path in self._prepare_jobs.output_paths(job.item)
+        }
 
     def _on_start_rendering(self, command: StartRendering | StartRenderQueue) -> None:
         """Launch the render worker for *command* off the GUI thread."""
