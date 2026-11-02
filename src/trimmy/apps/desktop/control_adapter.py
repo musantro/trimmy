@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QApplication
 from trimmy.apps.cli.domain.models import ControlError, JsonMap, Payload
 from trimmy.apps.desktop.main_window import QueuedRenderGroup, QueuedRenderJob
 from trimmy.editing.crop.domain.models import CropPosition, CropRect
-from trimmy.rendering.domain.messages import StartRenderQueue, StopRendering
+from trimmy.rendering.domain.messages import StartRenderQueue
 from trimmy.rendering.domain.models import RenderTarget
 
 
@@ -260,6 +260,8 @@ class MainWindowControlAdapter:
         return Payload(data={"message": f"Editing queue item {index}"})
 
     def queue_render(self) -> Payload:
+        if self._is_rendering():
+            raise ControlError("render_in_progress", "A render is already running")
         if not self._window._render_queue:
             raise ControlError("queue_index_out_of_range", "The render queue is empty")
         self._start_queue(tuple(self._window._render_queue), saved_queue=True)
@@ -270,11 +272,12 @@ class MainWindowControlAdapter:
         if self._is_rendering():
             raise ControlError("render_in_progress", "A render is already running")
         jobs = self._jobs_for_outputs(output, output_dir, queue_suffix=None)
-        self._start_queue((QueuedRenderGroup(jobs),), saved_queue=False)
+        if not self._window.start_direct_render(jobs):
+            raise ControlError("render_in_progress", "A render is already running")
         return Payload(data={"message": "Rendering started"})
 
     def render_stop(self) -> Payload:
-        self._window._bus.publish(StopRendering())
+        self._window.stop_render()
         return Payload(data={"message": "Render stop requested"})
 
     def render_status(self) -> Payload:
@@ -391,8 +394,7 @@ class MainWindowControlAdapter:
             self._window._start_render_preview()
 
     def _is_rendering(self) -> bool:
-        worker = self._window._render_worker
-        return bool(worker is not None and worker.isRunning())
+        return self._window.is_rendering()
 
     def _video_state(self) -> JsonMap | None:
         info = self._window.video_info

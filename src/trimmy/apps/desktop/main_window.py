@@ -94,6 +94,7 @@ from trimmy.rendering.application.probe_video_use_case import (
 from trimmy.rendering.application.render_segments_use_case import (
     RenderSegmentsUseCase,
 )
+from trimmy.rendering.application.session import DirectRenderStarted, RenderSession
 from trimmy.rendering.domain.gateways import RenderingBackend
 from trimmy.rendering.domain.messages import (
     RenderCompleted,
@@ -140,6 +141,7 @@ class DesktopDependencies:
     prepare_jobs: PrepareRenderJobs
     preferences_repository: PreferencesRepository
     event_bus: EventBus
+    render_session: RenderSession
     rendering_backend_factory: Callable[[], RenderingBackend]
     crop_widget: CropWidget
     local_event_bus_factory: Callable[[], EventBus]
@@ -525,7 +527,9 @@ class MainWindow(QMainWindow):
         self.split_ratio: float = self._prefs.split_ratio
         self._waiting_first_frame: bool = False
 
+        self.render_session = dependencies.render_session
         self._bus = dependencies.event_bus
+        self._bus.subscribe(DirectRenderStarted, self._on_direct_render_started)
         self._bus.subscribe(StartRendering, self._on_start_rendering)
         self._bus.subscribe(StartRenderQueue, self._on_start_rendering)
         self._bus.subscribe(StopRendering, self._on_stop_rendering)
@@ -849,6 +853,8 @@ class MainWindow(QMainWindow):
     # ---- render ----
 
     def _render(self) -> None:
+        if self.is_rendering():
+            return
         if not self.video_info or self._source_path is None:
             return
         src = self._source_path
@@ -860,24 +866,34 @@ class MainWindow(QMainWindow):
         if output_paths is None:
             return
 
+        self.start_direct_render(self._build_render_jobs(src, targets, output_paths))
+
+    def start_direct_render(self, jobs: tuple[QueuedRenderJob, ...]) -> bool:
+        """Start a direct render from either GUI or control intent."""
+        if self.is_rendering():
+            return False
+        return self.render_session.start(tuple(job.item for job in jobs))
+
+    def is_rendering(self) -> bool:
+        """Include reserved sessions and workers still finishing their thread."""
+        return self.render_session.state.active or bool(
+            self._render_worker is not None and self._render_worker.isRunning()
+        )
+
+    def _on_direct_render_started(self, event: DirectRenderStarted) -> None:
         self._editor_view.render_btn.setEnabled(False)
         self._editor_view.send_queue_btn.setEnabled(False)
         self._editor_view.render_queue_btn.setEnabled(False)
         self._editor_view.stop_btn.setVisible(True)
+        self._render_view.reset()
         self._rendering_saved_queue = False
         self._active_render_groups = ()
         self._active_item_group_indexes = ()
-        self._active_item_progress = {}
+        self._active_item_progress = dict.fromkeys(range(len(event.items)), 0)
         self._active_preview_group_index = None
-
-        jobs = self._build_render_jobs(src, targets, output_paths)
-        items = [job.item for job in jobs]
-        for job in jobs:
-            self._render_view.set_platform_info(self._target_label(job.item.target), 0)
-
-        self._render_out_path = str(jobs[0].output_path)
-        self._bus.publish(StartRenderQueue(tuple(items)))
-
+        self._render_out_path = str(event.items[0].spec.output_path)
+        for item in event.items:
+            self._render_view.set_platform_info(self._target_label(item.target), 0)
         self._switch_to_view(_VIEW_RENDER)
         self._start_render_preview()
 
@@ -906,6 +922,8 @@ class MainWindow(QMainWindow):
         self._sync_queue_controls()
 
     def _render_job_queue(self) -> None:
+        if self.is_rendering():
+            return
         if not self._render_queue:
             return
 
@@ -1107,6 +1125,7 @@ class MainWindow(QMainWindow):
             self._rendering_backend_factory(),
             self._local_event_bus_factory,
         )
+        self._render_worker.finished.connect(self._sync_queue_controls)
         self._render_worker.start()
 
     def _on_stop_rendering(self, _command: StopRendering) -> None:
@@ -1119,6 +1138,10 @@ class MainWindow(QMainWindow):
         self._render_view.set_platform_info(self.selected_platform, event.pct)
 
     def _on_render_queue_progressed(self, event: RenderQueueProgressed) -> None:
+        if self.render_session.state.active:
+            self._active_item_progress = dict(
+                enumerate(self.render_session.state.progress)
+            )
         self._render_view.set_global_progress(event.global_pct, "--:-- remaining")
         label = self._target_label(event.target)
         if self._rendering_saved_queue and event.item_index < len(
@@ -1168,11 +1191,16 @@ class MainWindow(QMainWindow):
 
     def _on_render_queue_completed(self, event: RenderQueueCompleted) -> None:
         result = event.result
+        direct_state = self.render_session.state
+        if not self._rendering_saved_queue:
+            self._active_item_progress = dict(enumerate(direct_state.progress))
         self._editor_view.render_btn.setEnabled(bool(self.selected_targets))
         self._editor_view.stop_btn.setVisible(False)
         self._sync_queue_controls()
 
-        if result.is_cancelled:
+        if result.is_cancelled or (
+            not self._rendering_saved_queue and direct_state.status == "cancelled"
+        ):
             self._stop_render_preview()
             self._render_view.reset()
             self._active_render_groups = ()
@@ -1182,13 +1210,20 @@ class MainWindow(QMainWindow):
             self._switch_to_view(_VIEW_EDITOR)
             return
 
-        self._render_view.set_global_progress(100, "Render complete!")
+        failed = bool(result.failures)
+        self._render_view.set_global_progress(
+            direct_state.global_progress
+            if failed and not self._rendering_saved_queue
+            else 100,
+            "Render failed" if failed else "Render complete!",
+        )
         for item_index, entry in enumerate(result.entries):
             if self._rendering_saved_queue:
                 self._active_item_progress[item_index] = 100
             else:
                 self._render_view.set_platform_info(
-                    self._target_label(entry.target), 100
+                    self._target_label(entry.target),
+                    direct_state.progress[item_index],
                 )
         if self._rendering_saved_queue:
             for group_index in range(len(self._active_render_groups)):
@@ -1392,8 +1427,9 @@ class MainWindow(QMainWindow):
 
     def _sync_queue_controls(self) -> None:
         count = len(self._render_queue)
-        running = self._render_worker is not None and self._render_worker.isRunning()
+        running = self.is_rendering()
         has_targets = bool(self.selected_targets)
+        self._editor_view.render_btn.setEnabled(has_targets and not running)
         self._editor_view.send_queue_btn.setEnabled(has_targets and not running)
         self._editor_view.render_queue_btn.setEnabled(count > 0 and not running)
         self._editor_view.queue_status.setText(
@@ -1402,8 +1438,15 @@ class MainWindow(QMainWindow):
             else f"{count} JOB{'S' if count != 1 else ''} QUEUED",
         )
 
+    def stop_render(self) -> None:
+        """Cancel a direct session or the legacy saved queue."""
+        if self.render_session.state.active:
+            self.render_session.cancel()
+        else:
+            self._bus.publish(StopRendering())
+
     def _stop_render(self) -> None:
-        self._bus.publish(StopRendering())
+        self.stop_render()
 
     @override
     def closeEvent(self, event: QCloseEvent) -> None:
