@@ -1,3 +1,121 @@
+## v0.19.0 (2026-11-02)
+
+### Feat
+
+- run saved queues through shared render sessions (#57)
+- share direct render session behavior (#56)
+
+### Fix
+
+- honor selection of the active queue preview (#57)
+
+## v0.17.0 (2026-11-02)
+
+### Feat
+
+- share stable render job preparation (#58)
+
+### Refactor
+
+- centralize render output expansion and part names
+
+## v0.16.1 (2026-07-21)
+
+### Refactor
+
+- enforce modular hexagonal architecture
+- enforce modular hexagonal architecture
+
+## v0.16.0 (2026-07-13)
+
+### Feat
+
+- add Typer CLI help
+
+## v0.15.0 (2026-07-13)
+
+### Feat
+
+- add always-on CLI control
+
+## v0.14.0 (2026-07-07)
+
+### Feat
+
+- remember last video and output folders
+
+## v0.13.1 (2026-07-07)
+
+### Fix
+
+- set trim start after end from playhead
+
+## v0.13.0 (2026-07-07)
+
+### Feat
+
+- add render queue
+
+## v0.12.1 (2026-07-07)
+
+### Refactor
+
+- **app**: remove sidebar menu
+
+## v0.12.0 (2026-07-06)
+
+### Feat
+
+- show audio channel levels in editor
+
+## v0.11.1 (2026-07-06)
+
+### Fix
+
+- allow seeking past trim end while paused
+
+## v0.11.0 (2026-07-06)
+
+### Feat
+
+- add multi-target render queue
+
+## v0.10.0 (2026-07-06)
+
+### Feat
+
+- animate render progress bars
+
+## v0.9.0 (2026-07-06)
+
+### Feat
+
+- add render screen playground
+
+## v0.8.4 (2026-06-27)
+
+### Fix
+
+- **hooks**: pre-fetch hook environments and surface failures at session start
+
+## v0.8.3 (2026-06-20)
+
+### Fix
+
+- **rendering**: split segments into equal-length parts
+
+## v0.8.2 (2026-06-20)
+
+### Refactor
+
+- **app**: multi-view GUI with sidebar navigation (#26)
+
+## v0.8.1 (2026-06-20)
+
+### Refactor
+
+- **app**: adopt DESIGN.md design system with reusable components
+
 ## v0.18.0 (2026-11-02)
 
 ### Feat
